@@ -1,14 +1,3 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-</head>
-<body>
-  
-</body>
-</html>
 
 <?php 
 
@@ -23,7 +12,7 @@
                              
 
 header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json; charset=UTF-8");
+header("Content-Type: text/html; charset=UTF-8");
 header("Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
 
@@ -32,12 +21,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-$ch = curl_init("https://api.jikan.moe/v4/top/anime");
+$ch = curl_init("https://kitsu.io/api/edge/anime?page[limit]=1" );
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 $anime_ = curl_exec($ch);
 $httpCode = curl_getinfo($ch,CURLINFO_HTTP_CODE);
 $curlErr = curl_error($ch);
-curl_close($ch);
+unset($ch);
 
 if($anime_ === FALSE)
     {
@@ -46,17 +35,25 @@ if($anime_ === FALSE)
         exit;
     }
 
- echo "Url is wrong or cannot connect for some reason";Project
-
 $response = json_decode($anime_, true); 
-
+$response = $response['data'][0]??null;
+$slug = ['attributes']['slug']??null;
+$image = $response['attributes']['posterImage']['large'] ?? null;
 //Next time use $a= $response[data][num];
 
+    echo "<img src=\"" . htmlspecialchars($image). "\" style=\"max-width:300px\"><br><br>";
+
+
+    
 echo json_encode([
-'status' => 'ok',
-'anime_id' => $response['data'][0]["mal_id"]??null,
-'url' => $response['data'][0]["url"] ?? null ,
-'title' => $response['data'][0]["title"] ?? null,
+'status' => 'ok ',
+'anime_id' => $response["id"]??null,
+'slug' => $slug,
+"kitsu_url" => $slug ? "https://kitsu.io/anime/{$slug}" : null,
+'title' => $response["attributes"]["canonicalTitle"] ?? null,
+'sypnosis' => $response["attributes"]["synopsis"] ?? null,
+
 ], JSON_PRETTY_PRINT);
 
 ?>
+
