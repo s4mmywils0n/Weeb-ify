@@ -1,12 +1,21 @@
 <?php
 // 1. Database Configuration
-$host = '127.0.0.1';
-$db = 'weeb_db';
-$user = 'root';
-$pass = '';
-$charset = 'utf8mb4';
 
-$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+$envPath = __DIR__ . '/../.env';
+
+if (file_exists($envPath)) {
+    $env = parse_ini_file($envPath);
+    $host = $env['host'];
+    $port = $env['port'];
+    $database = $env['database'];
+    $user = $env['user'];
+    $password = $env['password'];
+} else {
+    die("Error: .env file not found.");
+}
+$dsn = "pgsql:host=$host;port=$port;dbname=$database";
+
+
 
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -31,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // 3. Connect to the database
 try {
-    $pdo = new PDO($dsn, $user, $pass, $options);
+    $pdo = new PDO($dsn, $user, $password, $options);
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode(["error" => "Database connection failed"]);
