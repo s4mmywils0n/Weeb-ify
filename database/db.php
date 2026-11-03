@@ -42,6 +42,7 @@ $sql = "CREATE TABLE IF NOT EXISTS anime (
     title TEXT,
     synopsis TEXT,
     ageRating VARCHAR(50),
+    category VARCHAR(50),
     createdAt TIMESTAMP,
     endDate TIMESTAMP,
     episodeCount INT,
