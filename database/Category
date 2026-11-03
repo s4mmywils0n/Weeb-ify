@@ -58,3 +58,86 @@ try {
     $report['steps'][] = ['create_anime_categories', 'error', $e->getMessage()];
     die("Error creating tables: " . $e->getMessage());
 }
+// Fetch genres from Kitsu and insert into categories
+$report['steps'][] = ['fetch_genres', 'starting'];
+
+$genreUrl = 'https://kitsu.io/api/edge/genres';
+$limit = 20;
+$offset = 0;
+$totalGenres = 0;
+
+$upsertCat = $pdo->prepare("
+    INSERT INTO categories (kitsu_id, name, slug)
+    VALUES (:kitsu_id, :name, :slug)
+    ON CONFLICT (kitsu_id) DO UPDATE SET
+        name = EXCLUDED.name,
+        slug = EXCLUDED.slug
+");
+
+while (true) {
+    $url = $genreUrl . '?page[limit]=' . $limit . '&page[offset]=' . $offset;
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => [
+            'Accept: application/vnd.api+json',
+            'Content-Type: application/vnd.api+json',
+        ],
+        CURLOPT_USERAGENT      => 'WeebifyGenreSync/1.0',
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+
+    $body = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+
+    if ($body === false || $httpCode !== 200) {
+        $report['steps'][] = ['fetch_genres', 'error', $curlErr ?: "HTTP $httpCode"];
+        break;
+    }
+
+    $payload = json_decode($body, true);
+    $data = $payload['data'] ?? [];
+
+    if (empty($data)) {
+        break;
+    }
+
+    foreach ($data as $genre) {
+        $attributes = $genre['attributes'] ?? [];
+        $kitsuId = $genre['id'] ?? null;
+        $name = $attributes['name'] ?? null;
+        $slug = $attributes['slug'] ?? null;
+
+        if ($kitsuId && $name) {
+            $upsertCat->execute([
+                ':kitsu_id' => $kitsuId,
+                ':name'     => $name,
+                ':slug'     => $slug,
+            ]);
+            $totalGenres++;
+        }
+    }
+
+    // Check for next page
+    $links = $payload['links'] ?? [];
+    if (!empty($links['next'])) {
+        $offset += $limit;
+        // Be polite to the API (Kitsu allows ~60 req/min)
+        usleep(500000); // 0.5 seconds
+    } else {
+        break;
+    }
+}
+
+$report['steps'][] = ['fetch_genres', 'ok', ['inserted' => $totalGenres]];
+
+// Verify
+$finalCount = (int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn();
+$report['categories_total'] = $finalCount;
+
+echo json_encode($report, JSON_PRETTY_PRINT);
+
+//i was lazy for this one icl :( sorry)
