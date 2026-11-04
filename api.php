@@ -1,7 +1,7 @@
 <?php
 // 1. Database Configuration
 
-$envPath = __DIR__ . '/../.env';
+$envPath = __DIR__ . '/.env';
 
 if (file_exists($envPath)) {
     $env = parse_ini_file($envPath);
@@ -14,8 +14,8 @@ if (file_exists($envPath)) {
     die("Error: .env file not found.");
 }
 $dsn = "pgsql:host=$host;port=$port;dbname=$database";
-
-
+// $dsn = "pgsql:host=$host;port=$port;dbname=$database;sslmode=require";
+// $dsn = "pgsql:host=$host;port=$port;dbname=$database;sslmode=require";
 
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -41,9 +41,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // 3. Connect to the database
 try {
     $pdo = new PDO($dsn, $user, $password, $options);
+// } catch (PDOException $e) {
+//     http_response_code(500);
+//     echo json_encode(["error" => "Database connection failed"]);
+//     exit;
+// }
+
+//Uncomment this to check db connection error
 } catch (PDOException $e) {
     http_response_code(500);
-    echo json_encode(["error" => "Database connection failed"]);
+
+    echo json_encode([
+        "error" => "Database connection failed",
+        "details" => $e->getMessage()
+    ]);
+
     exit;
 }
 
@@ -63,7 +75,7 @@ if ($apiPosition === false) {
 
 $path = substr(
     $uri,
-    $apiPosition + strlen('/Web-Services/api.php')
+    $apiPosition + strlen('/Weeb-ify/api.php')
 );
 
 // 5. Define the allowed resources and fields
@@ -311,7 +323,7 @@ if ($method === 'PUT' || $method === 'PATCH') {
     $setParts = [];
 
     foreach (array_keys($input) as $field) {
-        $setParts[] = "`$field` = :$field";
+        $setParts[] = "\"$field\" = :$field";
     }
 
     $sql = "UPDATE `$table`
