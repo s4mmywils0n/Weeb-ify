@@ -27,7 +27,7 @@ $pdo = new PDO($dsn, $user, $password, [
     die("Error connecting to the database: " . $e->getMessage());
 }
 
-$sql =   "CREATE TABLE IF NOT EXISTS favorites ( id SERIAL PRIMARY KEY,
+$sql = "CREATE TABLE IF NOT EXISTS favorites ( id SERIAL PRIMARY KEY,
         user_id INT NOT NULL,
         anime_id VARCHAR(255) NOT NULL,
         UNIQUE (user_id, anime_id)
