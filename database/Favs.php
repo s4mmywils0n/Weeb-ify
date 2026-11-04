@@ -15,7 +15,7 @@ if (file_exists($envPath)) {
     $user = $env['user'];
     $password = $env['password'];
 } else {
-    die("Error: .env file not found.");
+    echo ("Error: .env file not found.");
 }
 $dsn = "pgsql:host=$host;port=$port;dbname=$database";
 
@@ -24,14 +24,17 @@ $pdo = new PDO($dsn, $user, $password, [
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 ]);
 } catch (PDOException $e) {
-    die("Error connecting to the database: " . $e->getMessage());
+    echo ("Error connecting to the database: " . $e->getMessage());
 }
 
-$sql = "CREATE TABLE IF NOT EXISTS favorites ( id SERIAL PRIMARY KEY,
-        user_id INT NOT NULL,
-        anime_id VARCHAR(255) NOT NULL,
-        UNIQUE (user_id, anime_id)
-    ";
+$sql = "CREATE TABLE IF NOT EXISTS favorites (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    anime_id VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, anime_id),
+    FOREIGN KEY (anime_id) REFERENCES anime(anime_id) ON DELETE CASCADE
+)";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute();
