@@ -1,7 +1,7 @@
 <?php
 // 1. Database Configuration
 
-$envPath = __DIR__ . '/../.env';
+$envPath = __DIR__ . '/.env';
 
 if (file_exists($envPath)) {
     $env = parse_ini_file($envPath);
@@ -53,7 +53,7 @@ $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 
 // Base path: /Web-Services/api.php
-$apiPosition = strpos($uri, '/Web-Services/api.php');
+$apiPosition = strpos($uri, '/Weeb-ify/api.php');
 
 if ($apiPosition === false) {
     http_response_code(404);
@@ -63,20 +63,25 @@ if ($apiPosition === false) {
 
 $path = substr(
     $uri,
-    $apiPosition + strlen('/Web-Services/api.php')
+    $apiPosition + strlen('/Weeb-ify/api.php')
 );
 
 // 5. Define the allowed resources and fields
 $resources = [
     'anime' => [
+        'anime_id',
+        'slug',
+        'image',
         'title',
-        'season_aired',
-        'year_aired',
-        'number_of_episodes',
-        'number_of_seasons',
-        'studio',
-        'genre',
-        'status'
+        'synopsis',
+        'agerating',
+        'createdat',
+        'enddate',
+        'episodecount',
+        'popularityrank',
+        'showtype',
+        'status',
+        'kitsu_url'
     ],
     'manga' => [
         'title',
@@ -108,7 +113,31 @@ if ($id === null) {
 
     // GET all records
     if ($method === 'GET') {
-        $stmt = $pdo->query("SELECT * FROM `$table` ORDER BY id ASC");
+        $page = filter_var(
+            $_GET['page'] ?? '1',
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1, 'max_range' => 1000000]]
+        );
+
+        if ($page === false) {
+            http_response_code(400);
+            echo json_encode([
+                "error" => "The page parameter must be an integer between 1 and 1000000"
+            ]);
+            exit;
+        }
+
+        $itemsPerPage = 20;
+        $offset = ($page - 1) * $itemsPerPage;
+
+        $stmt = $pdo->prepare(
+            "SELECT * FROM public.$table
+             ORDER BY id ASC
+             LIMIT :limit OFFSET :offset"
+        );
+        $stmt->bindValue(':limit', $itemsPerPage, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
         $records = $stmt->fetchAll();
 
         http_response_code(200);
@@ -160,17 +189,15 @@ if ($id === null) {
 
         // Build the INSERT query using supplied fields only
         $fields = array_keys($input);
-        $columns = implode(
-            ', ',
-            array_map(fn($field) => "`$field`", $fields)
-        );
+        $columns = implode(', ', $fields);
         $placeholders = implode(
             ', ',
             array_map(fn($field) => ":$field", $fields)
         );
 
-        $sql = "INSERT INTO `$table` ($columns)
-                VALUES ($placeholders)";
+        $sql = "INSERT INTO public.$table ($columns)
+                VALUES ($placeholders)
+                RETURNING *";
 
         $stmt = $pdo->prepare($sql);
 
@@ -181,12 +208,12 @@ if ($id === null) {
         $stmt->execute();
 
         // Return the newly created record
-        $newId = (int) $pdo->lastInsertId();
+        // $newId = (int) $pdo->lastInsertId();
 
-        $stmt = $pdo->prepare(
-            "SELECT * FROM `$table` WHERE id = :id"
-        );
-        $stmt->execute([':id' => $newId]);
+        // $stmt = $pdo->prepare(
+        //     "SELECT * FROM public.$table WHERE id = :id"
+        // );
+        // $stmt->execute([':id' => $newId]);
 
         http_response_code(201);
         echo json_encode($stmt->fetch());
@@ -201,7 +228,7 @@ if ($id === null) {
 
 // 8. GET, PUT, PATCH, or DELETE one record
 $stmt = $pdo->prepare(
-    "SELECT * FROM `$table` WHERE id = :id"
+    "SELECT * FROM public.$table WHERE id = :id"
 );
 $stmt->execute([':id' => $id]);
 $record = $stmt->fetch();
@@ -229,7 +256,7 @@ if (!$record) {
 // DELETE one record
 if ($method === 'DELETE') {
     $stmt = $pdo->prepare(
-        "DELETE FROM `$table` WHERE id = :id"
+        "DELETE FROM public.$table WHERE id = :id"
     );
     $stmt->execute([':id' => $id]);
 
@@ -314,9 +341,9 @@ if ($method === 'PUT' || $method === 'PATCH') {
         $setParts[] = "`$field` = :$field";
     }
 
-    $sql = "UPDATE `$table`
-            SET " . implode(', ', $setParts) . "
-            WHERE id = :id";
+    $sql = "UPDATE public.$table
+        SET " . implode(', ', $setParts) . "
+        WHERE id = :id";
 
     $stmt = $pdo->prepare($sql);
 
@@ -329,7 +356,7 @@ if ($method === 'PUT' || $method === 'PATCH') {
 
     // Return the updated record
     $stmt = $pdo->prepare(
-        "SELECT * FROM `$table` WHERE id = :id"
+        "SELECT * FROM public.$table WHERE id = :id"
     );
     $stmt->execute([':id' => $id]);
 
