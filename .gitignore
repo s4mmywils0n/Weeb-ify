@@ -1,3 +1,6 @@
 # Ignore the .env file and any other files that start with .env
 .env
 .env.*
+node_modules/
+public/build/
+*.tsbuildinfo

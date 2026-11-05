@@ -1,82 +1,47 @@
 <?php
 declare(strict_types=1);
 
-session_start();
-
-use app/src/BrowseController;
-use app/src/FavsController;
-use app/src/LoadController;
-
-define('APP_ROOT', dirname(__DIR__));
-
-spl_autoload_register(function (string $class): void {
-    $prefix = 'App\\';
-    if (strncmp($class, $prefix, strlen($prefix)) !== 0) {
-        return;
-    }
-
-    $parts = explode('\\', substr($class, strlen($prefix)));
-    $file = array_pop($parts);
-    $dir = $parts ? strtolower(implode('/', $parts)) . '/' : ''; 
-
-    $path = APP_ROOT . '/app/' . $dir . $file . '.php';
-    if (is_file($path)) {
-        require $path;
-    }
-});
-
-require APP_ROOT . '/database/db.php';
-
-function jsonResponse(int $status, array $body): void
-{
-    http_response_code($status);
-    header('Content-Type: application/json');
-    echo json_encode($body);
+$scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '/index.php');
+$publicBasePath = rtrim(dirname($scriptName), '/');
+if ($publicBasePath === '.') {
+    $publicBasePath = '';
 }
+$apiBaseUrl = $publicBasePath . '/api.php';
 
-function view(string $name): void
-{
-    require APP_ROOT . '/app/views/' . $name . '.php';
+$requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+if ($publicBasePath !== '' && str_starts_with($requestPath, $publicBasePath)) {
+    $requestPath = substr($requestPath, strlen($publicBasePath));
 }
-
-$routes = [
-    'GET /' => fn() => header('Location: ' . (isset($_SESSION['customer_id']) ? '/dashboard' : '/login')),
-
-    'GET /anime' => fn() => view('anime'),
-    'GET /manga' => fn() => view('manga'),
-    'GET /home' => fn() => view('home'),
-
-    'POST /register' => [AuthController::class, 'register'],
-    'POST /login' => [AuthController::class, 'login'],
-    'GET /logout' => [AuthController::class, 'logout'],
-
-    'GET /thresholds' => [ThresholdController::class, 'index'],
-    'POST /thresholds' => [ThresholdController::class, 'update'],
-    'GET /api/thresholds' => [ThresholdController::class, 'json'],
-
-    'POST /api/readings' => [ReadingApiController::class, 'store'],
-    'GET /api/readings/latest' => [ReadingApiController::class, 'latest'],
-
-    'GET /api/fan'     => [FanApiController::class, 'show'],
-    'POST /api/fan'    => [FanApiController::class, 'update'],
-];
-
-$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
-if ($path !== '/' && str_ends_with($path, '/')) {
-    $path = rtrim($path, '/');
+$requestPath = '/' . trim($requestPath, '/');
+if ($requestPath === '//') {
+    $requestPath = '/';
 }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$handler = $routes["$method $path"] ?? null;
 
-if ($handler === null) {
-    jsonResponse(404, ['status' => 'error', 'message' => 'Endpoint not found.']);
+function renderView(string $name): void
+{
+    global $apiBaseUrl, $publicBasePath;
+    $viewApiBaseUrl = $apiBaseUrl;
+    $viewRouteBase = $publicBasePath;
+    require dirname(__DIR__) . '/app/views/' . $name . '.php';
+}
+
+$routes = [
+    'GET /' => 'home',
+    'GET /home' => 'home',
+    'GET /anime' => 'anime',
+    'GET /anime-id' => 'anime-id',
+    'GET /manga' => 'manga',
+    'GET /products' => 'products',
+];
+
+$viewName = $routes[$method . ' ' . $requestPath] ?? null;
+if ($viewName === null) {
+    http_response_code(404);
+    header('Content-Type: text/plain; charset=UTF-8');
+    echo 'Page not found';
     exit;
 }
 
-if ($handler instanceof Closure) {
-    $handler();
-} else {
-    [$class, $action] = $handler;
-    (new $class())->$action();
-}
+renderView($viewName);

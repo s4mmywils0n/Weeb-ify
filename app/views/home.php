@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-    <script type="module" src="/test-supabase.js"></script>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -177,12 +176,12 @@
 </head>
 <body>
     <header class="site-header">
-        <a class="brand" href="home.php" aria-label="Weebi:fy home">Weebi<span>:fy</span></a>
+        <a class="brand" href="<?= htmlspecialchars($viewRouteBase . '/home', ENT_QUOTES, 'UTF-8') ?>" aria-label="Weebi:fy home">Weebi<span>:fy</span></a>
 
         <nav class="primary-nav" aria-label="Main navigation">
-            <a href="anime.php">Anime</a>
-            <a href="manga.php">Manga</a>
-            <a href="products.php">Products</a>
+            <a href="<?= htmlspecialchars($viewRouteBase . '/anime', ENT_QUOTES, 'UTF-8') ?>">Anime</a>
+            <a href="<?= htmlspecialchars($viewRouteBase . '/manga', ENT_QUOTES, 'UTF-8') ?>">Manga</a>
+            <a href="<?= htmlspecialchars($viewRouteBase . '/products', ENT_QUOTES, 'UTF-8') ?>">Products</a>
         </nav>
 
         <form class="header-search" role="search" action="" method="get">
@@ -201,7 +200,7 @@
             <span class="eyebrow">Your collection, your way</span>
             <h1 id="welcome-title">Find your <span>favorites.</span></h1>
             <p>Keep track of the anime, manga, and collectibles that make your shelves feel like yours.</p>
-            <a class="browse-link" href="anime.php">Explore anime <span aria-hidden="true">→</span></a>
+            <a class="browse-link" href="<?= htmlspecialchars($viewRouteBase . '/anime', ENT_QUOTES, 'UTF-8') ?>">Explore anime <span aria-hidden="true">→</span></a>
         </section>
     </main>
 </body>
