@@ -1,0 +1,22 @@
+<?php
+
+class BrowseService
+{
+    //im thinking of making this a handler for filters
+
+
+    public function filterByGenre($genre)
+    {
+        // Implement the logic to filter anime by genre
+    }
+
+    public function filterByRating($rating)
+    {
+        // Implement the logic to filter anime by rating
+    }
+
+    public function filterByReleaseDate($releaseDate)
+    {
+        // Implement the logic to filter anime by release date
+    }
+}
