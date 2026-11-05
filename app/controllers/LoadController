@@ -1,0 +1,5 @@
+<?php
+
+//this takes the url from the most popular anime and loads them in real time to make them scrollable 
+//one section for anime and the other for managa
+
