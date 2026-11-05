@@ -1,4 +1,5 @@
 <?php
+$viewRouteBase = isset($viewRouteBase) ? $viewRouteBase : '';
 $projectRoot = dirname(__DIR__, 3);
 $settingsFile = $projectRoot . '/.env';
 $settings = is_file($settingsFile)

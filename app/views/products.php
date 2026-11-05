@@ -1,3 +1,7 @@
+<?php
+$viewApiBaseUrl = isset($viewApiBaseUrl) ? $viewApiBaseUrl : '/api.php';
+$viewRouteBase = isset($viewRouteBase) ? $viewRouteBase : '';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>

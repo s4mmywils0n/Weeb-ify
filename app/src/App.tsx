@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
 
 type Resource = 'anime' | 'manga'
 type RecordData = Record<string, string | number | null> & { id: number }
@@ -9,25 +8,6 @@ type AppProps = {
   routeBase: string
   page: number
   recordId: number | null
-}
-
-const fields: Record<Resource, { name: string; label: string; type?: string }[]> = {
-  anime: [
-    { name: 'title', label: 'Title' },
-    { name: 'synopsis', label: 'Synopsis' },
-    { name: 'showtype', label: 'Type' },
-    { name: 'episodecount', label: 'Episodes', type: 'number' },
-    { name: 'status', label: 'Status' },
-  ],
-  manga: [
-    { name: 'title', label: 'Title' },
-    { name: 'author', label: 'Author' },
-    { name: 'year_published', label: 'Year published', type: 'number' },
-    { name: 'number_of_volumes', label: 'Volumes', type: 'number' },
-    { name: 'number_of_chapters', label: 'Chapters', type: 'number' },
-    { name: 'genre', label: 'Genre' },
-    { name: 'status', label: 'Status' },
-  ],
 }
 
 async function apiRequest<T>(url: string, options?: RequestInit): Promise<T> {
@@ -88,9 +68,6 @@ function Catalog({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
-  const [editing, setEditing] = useState<RecordData | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [formMessage, setFormMessage] = useState('')
 
   useEffect(() => {
     let active = true
@@ -113,69 +90,6 @@ function Catalog({
     return `${routeBase}/${resource}?page=${nextPage}`
   }
 
-  async function saveRecord(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setSaving(true)
-    setFormMessage('Saving…')
-    setError('')
-
-    const formData = new FormData(event.currentTarget)
-    const payload: Record<string, string | number | null> = {}
-    for (const field of fields[resource]) {
-      const value = String(formData.get(field.name) ?? '').trim()
-      if (editing) {
-        payload[field.name] = value === '' ? null : field.type === 'number' ? Number(value) : value
-      } else if (value !== '') {
-        payload[field.name] = field.type === 'number' ? Number(value) : value
-      }
-    }
-
-    if (!payload.title || typeof payload.title !== 'string') {
-      setSaving(false)
-      setFormMessage('Please enter a title.')
-      return
-    }
-
-    try {
-      if (editing) {
-        await apiRequest(`${apiBase}/${resource}/${editing.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify(payload),
-        })
-        setFormMessage('Record updated.')
-      } else {
-        await apiRequest(`${apiBase}/${resource}`, {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        })
-        setFormMessage('Record added.')
-      }
-      setEditing(null)
-      setReloadKey((key) => key + 1)
-    } catch (requestError) {
-      setFormMessage(requestError instanceof Error ? requestError.message : 'Could not save the record.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function deleteRecord(id: number) {
-    if (!window.confirm('Delete this record?')) return
-    setError('')
-    try {
-      await apiRequest(`${apiBase}/${resource}/${id}`, { method: 'DELETE' })
-      setReloadKey((key) => key + 1)
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Could not delete the record.')
-    }
-  }
-
-  function startEditing(record: RecordData) {
-    setEditing(record)
-    setFormMessage('')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
   const title = resource === 'anime' ? 'Anime' : 'Manga'
 
   return (
@@ -187,37 +101,6 @@ function Catalog({
         </div>
         <p className="page-number">Page {page}</p>
       </div>
-
-      <section className="editor-panel" aria-labelledby="editor-title">
-        <div className="panel-heading">
-          <h2 id="editor-title">{editing ? `Edit ${title.toLowerCase()}` : `Add ${title.toLowerCase()}`}</h2>
-          {editing && <button className="quiet-button" type="button" onClick={() => setEditing(null)}>Cancel edit</button>}
-        </div>
-        <form className="record-form" key={editing?.id ?? 'new'} onSubmit={saveRecord}>
-          {fields[resource].map((field) => (
-            <label className={field.name === 'synopsis' ? 'form-field wide-field' : 'form-field'} key={field.name}>
-              <span>{field.label}</span>
-              {field.name === 'synopsis' ? (
-                <textarea name={field.name} rows={3} defaultValue={String(editing?.[field.name] ?? '')} />
-              ) : (
-                <input
-                  name={field.name}
-                  type={field.type ?? 'text'}
-                  min={field.type === 'number' ? 0 : undefined}
-                  required={field.name === 'title'}
-                  defaultValue={String(editing?.[field.name] ?? '')}
-                />
-              )}
-            </label>
-          ))}
-          <div className="form-actions wide-field">
-            <button className="primary-button" type="submit" disabled={saving}>
-              {saving ? 'Saving…' : editing ? 'Save changes' : `Add ${title.toLowerCase()}`}
-            </button>
-            <span className="form-message" role="status">{formMessage}</span>
-          </div>
-        </form>
-      </section>
 
       <div className="list-heading">
         <h2>{title} collection</h2>
@@ -250,10 +133,6 @@ function Catalog({
                   <p>{[record.author, record.year_published, record.status].filter(Boolean).join(' · ')}</p>
                 </div>
               )}
-              <div className="card-actions">
-                <button className="quiet-button" type="button" onClick={() => startEditing(record)}>Edit</button>
-                <button className="quiet-button danger-button" type="button" onClick={() => deleteRecord(record.id)}>Delete</button>
-              </div>
             </article>
           )
         })}

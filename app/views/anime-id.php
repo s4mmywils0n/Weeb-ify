@@ -1,4 +1,6 @@
 <?php
+$viewApiBaseUrl = isset($viewApiBaseUrl) ? $viewApiBaseUrl : '/api.php';
+$viewRouteBase = isset($viewRouteBase) ? $viewRouteBase : '';
 $recordId = filter_input(
     INPUT_GET,
     'id',

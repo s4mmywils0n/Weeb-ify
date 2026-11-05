@@ -1,4 +1,6 @@
 <?php
+$viewApiBaseUrl = isset($viewApiBaseUrl) ? $viewApiBaseUrl : '/api.php';
+$viewRouteBase = isset($viewRouteBase) ? $viewRouteBase : '';
 $pageNumber = filter_input(
     INPUT_GET,
     'page',

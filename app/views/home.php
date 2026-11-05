@@ -1,3 +1,6 @@
+<?php
+$viewRouteBase = isset($viewRouteBase) ? $viewRouteBase : '';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
