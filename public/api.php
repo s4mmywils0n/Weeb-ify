@@ -138,13 +138,45 @@ if ($recordId === null && $method === 'GET') {
         sendJson(400, ['error' => 'The page parameter must be an integer between 1 and 1000000']);
     }
 
-    $itemsPerPage = 20;
-    $query = http_build_query([
+    $itemsPerPage = filter_var(
+        $_GET['limit'] ?? '20',
+        FILTER_VALIDATE_INT,
+        ['options' => ['min_range' => 1, 'max_range' => 100]]
+    );
+
+    if ($itemsPerPage === false) {
+        sendJson(400, ['error' => 'The limit parameter must be an integer between 1 and 100']);
+    }
+
+    $queryParams = [
         'select' => '*',
-        'order' => 'id.asc',
         'limit' => $itemsPerPage,
         'offset' => ($page - 1) * $itemsPerPage,
-    ], '', '&', PHP_QUERY_RFC3986);
+    ];
+
+    if ($table === 'anime') {
+        foreach (['showtype', 'agerating'] as $filterField) {
+            $filterValue = trim((string) ($_GET[$filterField] ?? ''));
+            if ($filterValue !== '') {
+                $queryParams[$filterField] = 'eq.' . $filterValue;
+            }
+        }
+
+        $sortOptions = [
+            'title_asc' => 'title.asc,id.asc',
+            'title_desc' => 'title.desc,id.asc',
+            'createdat_asc' => 'createdat.asc,id.asc',
+            'createdat_desc' => 'createdat.desc,id.asc',
+            'popularityrank_asc' => 'popularityrank.asc,id.asc',
+            'popularityrank_desc' => 'popularityrank.desc,id.asc',
+        ];
+        $sortKey = (string) ($_GET['sort'] ?? '');
+        $queryParams['order'] = $sortOptions[$sortKey] ?? 'id.asc';
+    } else {
+        $queryParams['order'] = 'id.asc';
+    }
+
+    $query = http_build_query($queryParams, '', '&', PHP_QUERY_RFC3986);
 
     $result = supabaseRequest($baseUrl . '?' . $query, $supabaseKey, 'GET');
     sendJson($result['status'], $result['body']);

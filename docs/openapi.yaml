@@ -1,49 +1,72 @@
 openapi: 3.0.3
 
 info:
-  title: Weeb Database API
-  description: REST API for managing anime and manga records.
-  version: 1.0.0
+  title: Weebi:fy API
+  description: API for reading and managing anime and manga records stored in Supabase.
+  version: 2.0.0
 
 servers:
-  - url: http://localhost/weeb_project/api.php
-    description: Local development server
+  - url: http://localhost/Weeb-ify/public/api.php
+    description: Local Apache development server
 
 tags:
   - name: Anime
-    description: Operations for anime records
+    description: Anime collection and filtering operations
   - name: Manga
-    description: Operations for manga records
+    description: Manga collection operations
 
 paths:
   /anime:
     get:
-      tags:
-        - Anime
-      summary: Get all anime
-      operationId: getAnimeList
+      tags: [Anime]
+      summary: List anime
+      operationId: listAnime
+      description: Returns a page of anime. Sorted anime results use ID ascending as a unique tie-breaker; the default order is ID ascending.
       parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/Limit"
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: showtype
+          in: query
+          description: Match an exact anime show type.
+          schema:
+            type: string
+          example: TV
+        - name: agerating
+          in: query
+          description: Match an exact age rating.
+          schema:
+            type: string
+          example: PG
+        - name: sort
+          in: query
+          description: Anime sort order. Each selected sort is followed by ID ascending as a stable tie-breaker. Popularity rank ascending puts the most popular (lowest rank) first.
+          schema:
+            type: string
+            enum:
+              - title_asc
+              - title_desc
+              - createdat_asc
+              - createdat_desc
+              - popularityrank_asc
+              - popularityrank_desc
+          example: title_asc
       responses:
-        "200":
-          description: List of anime records
+        '200':
+          description: Anime records for the requested page.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Anime"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-
+                  $ref: '#/components/schemas/Anime'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
     post:
-      tags:
-        - Anime
+      tags: [Anime]
       summary: Create an anime record
       operationId: createAnime
       requestBody:
@@ -51,145 +74,147 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AnimeInput"
+              $ref: '#/components/schemas/AnimeInput'
       responses:
-        "201":
-          description: Anime record created
+        '201':
+          description: Anime record created.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Anime"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntity"
-        "500":
-          $ref: "#/components/responses/ServerError"
+                $ref: '#/components/schemas/Anime'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '4XX':
+          $ref: '#/components/responses/SupabaseError'
 
   /anime/{id}:
     parameters:
-      - $ref: "#/components/parameters/RecordId"
-
+      - $ref: '#/components/parameters/RecordId'
     get:
-      tags:
-        - Anime
-      summary: Get an anime by ID
-      operationId: getAnimeById
+      tags: [Anime]
+      summary: Get an anime record
+      operationId: getAnime
       responses:
-        "200":
-          description: Anime record found
+        '200':
+          description: The requested anime record.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Anime"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-
+                $ref: '#/components/schemas/Anime'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '4XX':
+          $ref: '#/components/responses/SupabaseError'
     put:
-      tags:
-        - Anime
+      tags: [Anime]
       summary: Replace an anime record
       operationId: replaceAnime
+      description: Requires a title. Omitted writable fields are set to null.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AnimeInput"
+              $ref: '#/components/schemas/AnimeInput'
       responses:
-        "200":
-          description: Anime record updated
+        '200':
+          description: The replaced anime record.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Anime"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntity"
-
+                $ref: '#/components/schemas/Anime'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '4XX':
+          $ref: '#/components/responses/SupabaseError'
     patch:
-      tags:
-        - Anime
-      summary: Partially update an anime record
+      tags: [Anime]
+      summary: Update an anime record
       operationId: updateAnime
+      description: Updates only the supplied fields. An empty object is rejected.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AnimeUpdate"
+              $ref: '#/components/schemas/AnimeUpdate'
       responses:
-        "200":
-          description: Anime record updated
+        '200':
+          description: The updated anime record.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Anime"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntity"
-
+                $ref: '#/components/schemas/Anime'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '4XX':
+          $ref: '#/components/responses/SupabaseError'
     delete:
-      tags:
-        - Anime
+      tags: [Anime]
       summary: Delete an anime record
       operationId: deleteAnime
       responses:
-        "200":
-          description: Anime record deleted
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
+        '200':
+          description: Anime record deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '4XX':
+          $ref: '#/components/responses/SupabaseError'
 
   /manga:
     get:
-      tags:
-        - Manga
-      summary: Get all manga
-      operationId: getMangaList
+      tags: [Manga]
+      summary: List manga
+      operationId: listManga
+      description: Returns a page of manga records, ordered by ID ascending.
       parameters:
-        - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/Limit"
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
       responses:
-        "200":
-          description: List of manga records
+        '200':
+          description: Manga records for the requested page.
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Manga"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-
+                  $ref: '#/components/schemas/Manga'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
     post:
-      tags:
-        - Manga
+      tags: [Manga]
       summary: Create a manga record
       operationId: createManga
       requestBody:
@@ -197,116 +222,120 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MangaInput"
+              $ref: '#/components/schemas/MangaInput'
       responses:
-        "201":
-          description: Manga record created
+        '201':
+          description: Manga record created.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Manga"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntity"
-        "500":
-          $ref: "#/components/responses/ServerError"
+                $ref: '#/components/schemas/Manga'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '4XX':
+          $ref: '#/components/responses/SupabaseError'
 
   /manga/{id}:
     parameters:
-      - $ref: "#/components/parameters/RecordId"
-
+      - $ref: '#/components/parameters/RecordId'
     get:
-      tags:
-        - Manga
-      summary: Get a manga by ID
-      operationId: getMangaById
+      tags: [Manga]
+      summary: Get a manga record
+      operationId: getManga
       responses:
-        "200":
-          description: Manga record found
+        '200':
+          description: The requested manga record.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Manga"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-
+                $ref: '#/components/schemas/Manga'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '4XX':
+          $ref: '#/components/responses/SupabaseError'
     put:
-      tags:
-        - Manga
+      tags: [Manga]
       summary: Replace a manga record
       operationId: replaceManga
+      description: Requires a title. Omitted writable fields are set to null.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MangaInput"
+              $ref: '#/components/schemas/MangaInput'
       responses:
-        "200":
-          description: Manga record updated
+        '200':
+          description: The replaced manga record.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Manga"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntity"
-
+                $ref: '#/components/schemas/Manga'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '4XX':
+          $ref: '#/components/responses/SupabaseError'
     patch:
-      tags:
-        - Manga
-      summary: Partially update a manga record
+      tags: [Manga]
+      summary: Update a manga record
       operationId: updateManga
+      description: Updates only the supplied fields. An empty object is rejected.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MangaUpdate"
+              $ref: '#/components/schemas/MangaUpdate'
       responses:
-        "200":
-          description: Manga record updated
+        '200':
+          description: The updated manga record.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Manga"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntity"
-
+                $ref: '#/components/schemas/Manga'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '4XX':
+          $ref: '#/components/responses/SupabaseError'
     delete:
-      tags:
-        - Manga
+      tags: [Manga]
       summary: Delete a manga record
       operationId: deleteManga
       responses:
-        "200":
-          description: Manga record deleted
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
+        '200':
+          description: Manga record deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResult'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+        '502':
+          $ref: '#/components/responses/UpstreamError'
+        '4XX':
+          $ref: '#/components/responses/SupabaseError'
 
 components:
   parameters:
@@ -314,24 +343,23 @@ components:
       name: id
       in: path
       required: true
-      description: Numeric ID of the record
+      description: Numeric record ID.
       schema:
         type: integer
         minimum: 1
-
     Page:
       name: page
       in: query
-      description: 1-based page number
+      description: 1-based page number.
       schema:
         type: integer
         minimum: 1
+        maximum: 1000000
         default: 1
-
     Limit:
       name: limit
       in: query
-      description: Number of items per page (max 100)
+      description: Maximum number of records to return on a page.
       schema:
         type: integer
         minimum: 1
@@ -342,245 +370,143 @@ components:
     Anime:
       type: object
       properties:
-        id:
-          type: integer
-          example: 1
-        title:
-          type: string
-          example: Fullmetal Alchemist
-        season_aired:
-          type: string
-          nullable: true
-          example: Spring
-        year_aired:
-          type: integer
-          nullable: true
-          example: 2009
-        number_of_episodes:
-          type: integer
-          nullable: true
-          example: 64
-        number_of_seasons:
-          type: integer
-          nullable: true
-          example: 1
-        studio:
-          type: string
-          nullable: true
-          example: Bones
-        genre:
-          type: string
-          nullable: true
-          example: Action, Fantasy
-        status:
-          type: string
-          nullable: true
-          example: Completed
-      required:
-        - id
-        - title
+        id: { type: integer, example: 1 }
+        anime_id: { type: string, nullable: true, example: '12345' }
+        slug: { type: string, nullable: true, example: fullmetal-alchemist-brotherhood }
+        image: { type: string, nullable: true, format: uri }
+        title: { type: string, example: 'Fullmetal Alchemist: Brotherhood' }
+        synopsis: { type: string, nullable: true }
+        agerating: { type: string, nullable: true, example: PG }
+        createdat: { type: string, format: date-time, nullable: true }
+        enddate: { type: string, nullable: true, example: '2010-07-04' }
+        episodecount: { type: integer, nullable: true, minimum: 0 }
+        popularityrank: { type: integer, nullable: true, minimum: 1 }
+        showtype: { type: string, nullable: true, example: TV }
+        status: { type: string, nullable: true, example: finished }
+        kitsu_url: { type: string, nullable: true, format: uri }
+      required: [id, title]
 
     AnimeInput:
       type: object
-      required:
-        - title
+      additionalProperties: false
+      required: [title]
       properties:
-        title:
-          type: string
-          minLength: 1
-          example: Fullmetal Alchemist
-        season_aired:
-          type: string
-          nullable: true
-        year_aired:
-          type: integer
-          nullable: true
-        number_of_episodes:
-          type: integer
-          minimum: 0
-          nullable: true
-        number_of_seasons:
-          type: integer
-          minimum: 0
-          nullable: true
-        studio:
-          type: string
-          nullable: true
-        genre:
-          type: string
-          nullable: true
-        status:
-          type: string
-          nullable: true
+        anime_id: { type: string, nullable: true }
+        slug: { type: string, nullable: true }
+        image: { type: string, nullable: true, format: uri }
+        title: { type: string, minLength: 1 }
+        synopsis: { type: string, nullable: true }
+        agerating: { type: string, nullable: true }
+        createdat: { type: string, format: date-time, nullable: true }
+        enddate: { type: string, nullable: true }
+        episodecount: { type: integer, minimum: 0, nullable: true }
+        popularityrank: { type: integer, minimum: 1, nullable: true }
+        showtype: { type: string, nullable: true }
+        status: { type: string, nullable: true }
+        kitsu_url: { type: string, nullable: true, format: uri }
 
     AnimeUpdate:
       type: object
+      additionalProperties: false
       minProperties: 1
       properties:
-        title:
-          type: string
-          minLength: 1
-        season_aired:
-          type: string
-          nullable: true
-        year_aired:
-          type: integer
-          nullable: true
-        number_of_episodes:
-          type: integer
-          minimum: 0
-          nullable: true
-        number_of_seasons:
-          type: integer
-          minimum: 0
-          nullable: true
-        studio:
-          type: string
-          nullable: true
-        genre:
-          type: string
-          nullable: true
-        status:
-          type: string
-          nullable: true
+        anime_id: { type: string, nullable: true }
+        slug: { type: string, nullable: true }
+        image: { type: string, nullable: true, format: uri }
+        title: { type: string, minLength: 1 }
+        synopsis: { type: string, nullable: true }
+        agerating: { type: string, nullable: true }
+        createdat: { type: string, format: date-time, nullable: true }
+        enddate: { type: string, nullable: true }
+        episodecount: { type: integer, minimum: 0, nullable: true }
+        popularityrank: { type: integer, minimum: 1, nullable: true }
+        showtype: { type: string, nullable: true }
+        status: { type: string, nullable: true }
+        kitsu_url: { type: string, nullable: true, format: uri }
 
     Manga:
       type: object
       properties:
-        id:
-          type: integer
-          example: 1
-        title:
-          type: string
-          example: One Piece
-        author:
-          type: string
-          nullable: true
-          example: Eiichiro Oda
-        year_published:
-          type: integer
-          nullable: true
-          example: 1997
-        number_of_volumes:
-          type: integer
-          nullable: true
-          example: 110
-        number_of_chapters:
-          type: integer
-          nullable: true
-          example: 1120
-        genre:
-          type: string
-          nullable: true
-          example: Adventure
-        status:
-          type: string
-          nullable: true
-          example: Ongoing
-      required:
-        - id
-        - title
+        id: { type: integer, example: 1 }
+        title: { type: string, example: One Piece }
+        author: { type: string, nullable: true, example: Eiichiro Oda }
+        year_published: { type: integer, nullable: true, example: 1997 }
+        number_of_volumes: { type: integer, nullable: true, minimum: 0 }
+        number_of_chapters: { type: integer, nullable: true, minimum: 0 }
+        genre: { type: string, nullable: true }
+        status: { type: string, nullable: true }
+      required: [id, title]
 
     MangaInput:
       type: object
-      required:
-        - title
+      additionalProperties: false
+      required: [title]
       properties:
-        title:
-          type: string
-          minLength: 1
-          example: One Piece
-        author:
-          type: string
-          nullable: true
-        year_published:
-          type: integer
-          nullable: true
-        number_of_volumes:
-          type: integer
-          minimum: 0
-          nullable: true
-        number_of_chapters:
-          type: integer
-          minimum: 0
-          nullable: true
-        genre:
-          type: string
-          nullable: true
-        status:
-          type: string
-          nullable: true
+        title: { type: string, minLength: 1 }
+        author: { type: string, nullable: true }
+        year_published: { type: integer, nullable: true }
+        number_of_volumes: { type: integer, minimum: 0, nullable: true }
+        number_of_chapters: { type: integer, minimum: 0, nullable: true }
+        genre: { type: string, nullable: true }
+        status: { type: string, nullable: true }
 
     MangaUpdate:
       type: object
+      additionalProperties: false
       minProperties: 1
       properties:
-        title:
-          type: string
-          minLength: 1
-        author:
-          type: string
-          nullable: true
-        year_published:
-          type: integer
-          nullable: true
-        number_of_volumes:
-          type: integer
-          minimum: 0
-          nullable: true
-        number_of_chapters:
-          type: integer
-          minimum: 0
-          nullable: true
-        genre:
-          type: string
-          nullable: true
-        status:
-          type: string
-          nullable: true
+        title: { type: string, minLength: 1 }
+        author: { type: string, nullable: true }
+        year_published: { type: integer, nullable: true }
+        number_of_volumes: { type: integer, minimum: 0, nullable: true }
+        number_of_chapters: { type: integer, minimum: 0, nullable: true }
+        genre: { type: string, nullable: true }
+        status: { type: string, nullable: true }
+
+    DeleteResult:
+      type: object
+      properties:
+        message: { type: string, example: Record deleted successfully }
+      required: [message]
 
     Error:
       type: object
       properties:
-        error:
-          type: string
-          example: Endpoint not found
-      required:
-        - error
+        error: { type: string }
+        message: { type: string }
+        code: { type: string }
+        details: { type: string, nullable: true }
+        hint: { type: string, nullable: true }
+      additionalProperties: true
 
   responses:
     BadRequest:
-      description: Invalid request or input
+      description: Invalid JSON, page value, field, or request data.
       content:
         application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-
+          schema:
+            $ref: '#/components/schemas/Error'
     NotFound:
-      description: Record or endpoint not found
+      description: The record or API endpoint was not found.
       content:
         application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-
-    NotAcceptable:
-      description: The Accept header does not allow application/json
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-
-    UnsupportedMediaType:
-      description: Content-Type must be application/json on requests with a body
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-
-    UnprocessableEntity:
-      description: Request body failed validation
-      content:
-        application/json:
-          schema: { $ref: "#/components/schemas/Error" }
-
+          schema:
+            $ref: '#/components/schemas/Error'
     ServerError:
-      description: Internal server or database error
+      description: Supabase API configuration is missing or an internal error occurred.
       content:
         application/json:
-          schema: { $ref: "#/components/schemas/Error" }
+          schema:
+            $ref: '#/components/schemas/Error'
+    UpstreamError:
+      description: The API could not reach Supabase.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    SupabaseError:
+      description: Supabase rejected the request, for example because of row-level security, a constraint, or an invalid column value.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

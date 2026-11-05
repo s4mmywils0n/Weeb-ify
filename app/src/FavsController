@@ -1,0 +1,117 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Controllers;
+
+use App\Services\SupabaseService;
+use RuntimeException;
+
+class FavsController
+{
+    private SupabaseService $supabase;
+
+    public function __construct(?SupabaseService $supabase = null)
+    {
+        $this->supabase = $supabase ?? new SupabaseService();
+    }
+
+    public function getFavsByUserId($userId): array
+    {
+        $userId = $this->authorizeUser($userId);
+
+        try {
+            $favs = $this->supabase->select('favs', ['user_id' => $userId]);
+        } catch (RuntimeException $exception) {
+            error_log('Unable to retrieve favorites: ' . $exception->getMessage());
+            $this->respond(500, ['error' => 'Unable to retrieve favorites.']);
+        }
+
+        return $favs;
+    }
+
+    public function addFavAnime($userId, $animeId): void
+    {
+        $this->addFavorite($userId, $animeId, 'anime_id');
+    }
+
+    public function removeFavAnime($userId, $animeId): void
+    {
+        $this->removeFavorite($userId, $animeId, 'anime_id');
+    }
+
+    public function addFavManga($userId, $mangaId): void
+    {
+        $this->addFavorite($userId, $mangaId, 'manga_id');
+    }
+
+    public function removeFavManga($userId, $mangaId): void
+    {
+        $this->removeFavorite($userId, $mangaId, 'manga_id');
+    }
+
+    private function addFavorite($userId, $itemId, string $itemColumn): void
+    {
+        $userId = $this->authorizeUser($userId);
+        $itemId = $this->requirePositiveId($itemId, 'itemId');
+
+        try {
+            $this->supabase->insert('favs', [
+                'user_id' => $userId,
+                $itemColumn => $itemId,
+            ]);
+            $this->respond(201, ['message' => 'Favorite added successfully']);
+        } catch (RuntimeException $exception) {
+            error_log('Unable to add favorite: ' . $exception->getMessage());
+            $this->respond(500, ['error' => 'Unable to add favorite.']);
+        }
+    }
+
+    private function removeFavorite($userId, $itemId, string $itemColumn): void
+    {
+        $userId = $this->authorizeUser($userId);
+        $itemId = $this->requirePositiveId($itemId, 'itemId');
+
+        try {
+            $this->supabase->delete('favs', [
+                'user_id' => $userId,
+                $itemColumn => $itemId,
+            ]);
+            $this->respond(200, ['message' => 'Favorite removed successfully']);
+        } catch (RuntimeException $exception) {
+            error_log('Unable to remove favorite: ' . $exception->getMessage());
+            $this->respond(500, ['error' => 'Unable to remove favorite.']);
+        }
+    }
+
+    private function authorizeUser($userId): int
+    {
+        $requestedUserId = filter_var($userId, FILTER_VALIDATE_INT);
+        $sessionUserId = filter_var($_SESSION['user_id'] ?? null, FILTER_VALIDATE_INT);
+
+        if ($requestedUserId === false || $requestedUserId < 1 ||
+            $sessionUserId === false || $sessionUserId !== $requestedUserId) {
+            $this->respond(403, ['error' => 'Unauthorized']);
+        }
+
+        return $requestedUserId;
+    }
+
+    private function requirePositiveId($id, string $field): int
+    {
+        $validatedId = filter_var($id, FILTER_VALIDATE_INT);
+        if ($validatedId === false || $validatedId < 1) {
+            $this->respond(400, ['error' => 'A valid ' . $field . ' is required.']);
+        }
+
+        return $validatedId;
+    }
+
+    private function respond(int $status, array $body): void
+    {
+        http_response_code($status);
+        header('Content-Type: application/json');
+        echo json_encode($body, JSON_THROW_ON_ERROR);
+        exit;
+    }
+}

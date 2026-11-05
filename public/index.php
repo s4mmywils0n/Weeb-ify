@@ -27,6 +27,14 @@ function renderView(string $name): void
     require dirname(__DIR__) . '/app/views/' . $name . '.php';
 }
 
+function CallDB(string $name): void
+{
+    global $apiBaseUrl, $publicBasePath;
+    $viewApiBaseUrl = $apiBaseUrl;
+    $viewRouteBase = $publicBasePath;
+    require dirname(__DIR__) . '/database/' . $name . '.php';
+}
+
 $routes = [
     'GET /' => 'home',
     'GET /home' => 'home',
@@ -34,6 +42,9 @@ $routes = [
     'GET /anime-id' => 'anime-id',
     'GET /manga' => 'manga',
     'GET /products' => 'products',
+    'GET /http-testing' => 'http-testing',
+    'GET /Category' => 'Category',
+    'GET /db' => 'db',
 ];
 
 $viewName = $routes[$method . ' ' . $requestPath] ?? null;
@@ -43,5 +54,8 @@ if ($viewName === null) {
     echo 'Page not found';
     exit;
 }
-
+if ($viewName === 'Category' || $viewName === 'db') {
+    CallDB($viewName);
+} else {
 renderView($viewName);
+}
