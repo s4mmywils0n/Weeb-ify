@@ -97,6 +97,8 @@ for($i = 0; $i < $fetch; $i += $page) {
         $slug = $attributes['slug'] ?? null;
         $image = $attributes['posterImage']['large'] ?? null;
 
+        $categoryMap[] = [];
+        
         // Bind parameters and execute the statement
         try {
             $stmt->execute([

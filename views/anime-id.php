@@ -1,4 +1,10 @@
 <?php
+session_start();
+if (!isset($_SESSION['user_id'])) {
+    $_SESSION['user_id'] = 1;
+}
+$favoriteUserId = (int) $_SESSION['user_id'];
+
 $recordId = filter_input(
     INPUT_GET,
     'id',
@@ -209,6 +215,28 @@ $returnUrl = 'anime.php?' . http_build_query(array_filter([
             text-align: center;
         }
 
+        .favorite-action { margin-bottom: 22px; }
+
+        .favorite-button {
+            padding: 12px 18px;
+            border: 0;
+            border-radius: 999px;
+            color: #21152c;
+            background: var(--accent);
+            cursor: pointer;
+            font: inherit;
+            font-weight: 750;
+        }
+
+        .favorite-button:hover { background: #e5c9ff; }
+        .favorite-button:disabled { cursor: default; opacity: .75; }
+
+        .favorite-message {
+            min-height: 1.5em;
+            margin: 8px 0 0;
+            color: var(--muted);
+        }
+
         @media (max-width: 760px) {
             .site-header { flex-wrap: wrap; gap: 10px 16px; }
             .brand { margin-right: auto; }
@@ -242,6 +270,7 @@ $returnUrl = 'anime.php?' . http_build_query(array_filter([
             <a href="products.php">Products</a>
         </nav>
 
+        //need to make the form for the search have a global function
         <form class="header-search" role="search" action="" method="get">
             <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none">
                 <circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8" />
@@ -265,6 +294,7 @@ $returnUrl = 'anime.php?' . http_build_query(array_filter([
 
     <script>
         const recordId = <?= $recordId === null ? 'null' : (int) $recordId ?>;
+        const favoriteUserId = <?= $favoriteUserId ?>;
         const content = document.getElementById("record-content");
         const title = document.getElementById("record-title");
 
@@ -320,6 +350,58 @@ $returnUrl = 'anime.php?' . http_build_query(array_filter([
                 synopsis.textContent = record.synopsis;
                 information.appendChild(synopsis);
             }
+
+            const favoriteAction = document.createElement("div");
+            favoriteAction.className = "favorite-action";
+            const favoriteButton = document.createElement("button");
+            favoriteButton.id = "addtofavorite";
+            favoriteButton.className = "favorite-button";
+            favoriteButton.type = "button";
+            favoriteButton.textContent = "Add to Favorite";
+            const favoriteMessage = document.createElement("p");
+            favoriteMessage.className = "favorite-message";
+            favoriteMessage.setAttribute("aria-live", "polite");
+            favoriteAction.append(favoriteButton, favoriteMessage);
+            information.appendChild(favoriteAction);
+
+            const animeId = typeof record.anime_id === "string" || Number.isInteger(record.anime_id)
+                ? String(record.anime_id).trim()
+                : "";
+            if (!animeId) {
+                favoriteButton.disabled = true;
+                favoriteMessage.textContent = "This anime does not have a valid anime ID.";
+            }
+
+            favoriteButton.addEventListener("click", async () => {
+                favoriteButton.disabled = true;
+                favoriteMessage.textContent = "Adding to favorites…";
+
+                try {
+                    const response = await fetch("../api.php/favorites", {
+                        method: "POST",
+                        headers: {
+                            "Accept": "application/json",
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            user_id: favoriteUserId,
+                            anime_id: animeId
+                        })
+                    });
+                    const result = await response.json();
+                    if (!response.ok) {
+                        throw new Error(result.error || "Could not add this anime to favorites.");
+                    }
+
+                    favoriteButton.textContent = response.status === 201
+                        ? "Added to Favorites"
+                        : "Already a Favorite";
+                    favoriteMessage.textContent = result.message || "Saved to your favorites.";
+                } catch (error) {
+                    favoriteButton.disabled = false;
+                    favoriteMessage.textContent = error.message;
+                }
+            });
 
             const details = document.createElement("dl");
             details.className = "details-list";
