@@ -1,0 +1,9 @@
+RewriteEngine On
+
+# Let api.php handle its own path-info routes, such as /api.php/anime/12.
+RewriteRule ^api\.php(?:/.*)?$ api.php [QSA,END]
+
+# Send application pages through the PHP view router, while leaving real files alone.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]

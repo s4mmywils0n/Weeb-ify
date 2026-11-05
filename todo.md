@@ -1,9 +1,0 @@
-| Requirement | Status | What I found |
-|---|---|---|
-| Keep basic item and list GET flows, with simple pages | **Partial** | The API has GET-all and GET-by-ID routes. `Manga.html` displays lists, but its anime columns still use the old schema, so they don’t match the anime table you described. There are no regression tests for the original GET flows. |
-| Create, update, delete, and meaningful pages | **Partial** | The API has POST, PUT/PATCH, and DELETE routes. The page supports listing and creating records, but not editing or deleting them. |
-| Collection endpoint, filtering, sorting, pagination | **Missing** | There’s a list route, but no filtering, sorting, or pagination. The OpenAPI file documents `page` and `limit`, but the API ignores them. |
-| Shared validation, safe errors, request-correlated logs | **Partial** | There’s some JSON and field validation, and SQL values are parameterized. But there’s no request ID or useful request logging, and database errors outside the connection step aren’t consistently converted to a safe JSON error. |
-| JSON/XML/YAML negotiation and behavior matrix | **Missing** | The API returns JSON only. The OpenAPI file describes JSON responses but doesn’t provide the requested full input/output and media-type behavior matrix; the API also doesn’t enforce `Accept` or `Content-Type`. |
-| Composite external service and PHP/JavaScript consumer | **Missing** | `testingAPI.php` calls Kitsu, but it isn’t integrated with internal database records as a composite API resource. The existing page consumes the internal API, but there’s no completed Kitsu-backed composite workflow. |
-| Security plan, OpenAPI, requests, tests, board, manifest | **Mostly missing** | There are partial account-related files, but no clear roles/ownership policy or documented login/session/token approach. I didn’t find request collections, regression tests, a project board, or a build manifest. |
