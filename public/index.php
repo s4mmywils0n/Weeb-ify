@@ -42,6 +42,7 @@ $routes = [
     'GET /anime-id' => 'anime-id',
     'GET /manga' => 'manga',
     'GET /products' => 'products',
+    'GET /http-testing' => 'http-testing',
     'GET /Category' => 'Category',
     'GET /db' => 'db',
 ];

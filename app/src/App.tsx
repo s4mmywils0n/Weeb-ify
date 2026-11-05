@@ -68,12 +68,29 @@ function Catalog({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [reloadKey, setReloadKey] = useState(0)
+  const [showType, setShowType] = useState(() => new URLSearchParams(window.location.search).get('showtype') ?? '')
+  const [ageRating, setAgeRating] = useState(() => new URLSearchParams(window.location.search).get('agerating') ?? '')
+  const [sort, setSort] = useState(() => new URLSearchParams(window.location.search).get('sort') ?? '')
+  const [activePage, setActivePage] = useState(page)
+  const [pageLimit, setPageLimit] = useState(() => {
+    const requestedLimit = Number(new URLSearchParams(window.location.search).get('limit') ?? 20)
+    return Number.isInteger(requestedLimit) && requestedLimit >= 1 && requestedLimit <= 100 ? requestedLimit : 20
+  })
+
+  const animeParams = new URLSearchParams()
+  animeParams.set('page', String(activePage))
+  animeParams.set('limit', String(pageLimit))
+  if (resource === 'anime') {
+    if (showType) animeParams.set('showtype', showType)
+    if (ageRating) animeParams.set('agerating', ageRating)
+    if (sort) animeParams.set('sort', sort)
+  }
 
   useEffect(() => {
     let active = true
     setLoading(true)
     setError('')
-    apiRequest<RecordData[]>(`${apiBase}/${resource}?page=${page}`)
+    apiRequest<RecordData[]>(`${apiBase}/${resource}?${animeParams.toString()}`)
       .then((data) => {
         if (active) setRecords(Array.isArray(data) ? data : [])
       })
@@ -84,10 +101,23 @@ function Catalog({
         if (active) setLoading(false)
       })
     return () => { active = false }
-  }, [apiBase, page, reloadKey, resource])
+  }, [apiBase, activePage, reloadKey, resource, showType, ageRating, sort, pageLimit])
 
   function pageHref(nextPage: number) {
-    return `${routeBase}/${resource}?page=${nextPage}`
+    const params = new URLSearchParams(animeParams)
+    params.set('page', String(nextPage))
+    return `${routeBase}/${resource}?${params.toString()}`
+  }
+
+  function changeFilter(update: () => void) {
+    update()
+    setActivePage(1)
+  }
+
+  function animeDetailHref(recordId: number) {
+    const params = new URLSearchParams(animeParams)
+    params.set('id', String(recordId))
+    return `${routeBase}/anime-id?${params.toString()}`
   }
 
   const title = resource === 'anime' ? 'Anime' : 'Manga'
@@ -99,12 +129,68 @@ function Catalog({
           <span className="eyebrow">Your collection</span>
           <h1>{title} <span>favorites.</span></h1>
         </div>
-        <p className="page-number">Page {page}</p>
+        <p className="page-number">Page {activePage}</p>
       </div>
 
       <div className="list-heading">
         <h2>{title} collection</h2>
         <button className="quiet-button" type="button" onClick={() => setReloadKey((key) => key + 1)}>Refresh</button>
+      </div>
+
+      <div className="catalog-filters" aria-label="Catalog options">
+        {resource === 'anime' && (
+          <>
+          <label className="filter-field">
+            <span>Show type</span>
+            <select value={showType} onChange={(event) => changeFilter(() => setShowType(event.target.value))}>
+              <option value="">All show types</option>
+              <option value="TV">TV</option>
+              <option value="movie">Movie</option>
+              <option value="OVA">OVA</option>
+              <option value="ONA">ONA</option>
+              <option value="special">Special</option>
+              <option value="music">Music</option>
+            </select>
+          </label>
+          <label className="filter-field">
+            <span>Age rating</span>
+            <select value={ageRating} onChange={(event) => changeFilter(() => setAgeRating(event.target.value))}>
+              <option value="">All age ratings</option>
+              <option value="G">G</option>
+              <option value="PG">PG</option>
+              <option value="R">R</option>
+              <option value="R18">R18</option>
+              <option value="R+">R+</option>
+            </select>
+          </label>
+          <label className="filter-field sort-field">
+            <span>Sort by</span>
+            <select value={sort} onChange={(event) => changeFilter(() => setSort(event.target.value))}>
+              <option value="">Default order</option>
+              <option value="title_asc">Title (A–Z)</option>
+              <option value="title_desc">Title (Z–A)</option>
+              <option value="createdat_asc">Created date (oldest first)</option>
+              <option value="createdat_desc">Created date (newest first)</option>
+              <option value="popularityrank_asc">Popularity rank (most popular)</option>
+              <option value="popularityrank_desc">Popularity rank (least popular)</option>
+            </select>
+          </label>
+          {(showType || ageRating || sort) && (
+            <button className="quiet-button clear-filters" type="button" onClick={() => { setShowType(''); setAgeRating(''); setSort(''); setActivePage(1) }}>
+              Clear filters
+            </button>
+          )}
+          </>
+        )}
+        <label className="filter-field">
+          <span>Results per page</span>
+          <select value={pageLimit} onChange={(event) => changeFilter(() => setPageLimit(Number(event.target.value)))}>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </label>
       </div>
 
       {error && <p className="message error-message" role="alert">{error}</p>}
@@ -117,7 +203,7 @@ function Catalog({
           return (
             <article className="anime-card" key={record.id}>
               {resource === 'anime' && (
-                <a className="record-link" href={`${routeBase}/anime-id?id=${record.id}&page=${page}`} aria-label={`View details for ${record.title ?? 'anime'}`}>
+                <a className="record-link" href={animeDetailHref(record.id)} aria-label={`View details for ${record.title ?? 'anime'}`}>
                   <div className="poster">
                     {image ? <img src={image} alt={record.title ? `${record.title} poster` : 'Anime poster'} loading="lazy" /> : (record.title ?? 'Anime')}
                   </div>
@@ -139,9 +225,9 @@ function Catalog({
       </section>
 
       <nav className="pagination" aria-label={`${title} pages`}>
-        <a className={page <= 1 ? 'disabled' : ''} aria-disabled={page <= 1} href={page > 1 ? pageHref(page - 1) : undefined}>Previous</a>
-        <span>Page {page}</span>
-        <a className={records.length < 20 || loading ? 'disabled' : ''} aria-disabled={records.length < 20 || loading} href={records.length >= 20 && !loading ? pageHref(page + 1) : undefined}>Next</a>
+        <a className={activePage <= 1 ? 'disabled' : ''} aria-disabled={activePage <= 1} href={activePage > 1 ? pageHref(activePage - 1) : undefined}>Previous</a>
+        <span>Page {activePage}</span>
+        <a className={records.length < pageLimit || loading ? 'disabled' : ''} aria-disabled={records.length < pageLimit || loading} href={records.length >= pageLimit && !loading ? pageHref(activePage + 1) : undefined}>Next</a>
       </nav>
     </main>
   )
@@ -166,10 +252,13 @@ function AnimeDetail({ apiBase, routeBase, recordId, page }: Omit<AppProps, 'vie
 
   const hiddenFields = new Set(['id', 'anime_id', 'slug', 'image', 'kitsu_url', 'title', 'synopsis'])
   const image = record && typeof record.image === 'string' && /^https?:\/\//i.test(record.image) ? record.image : ''
+  const returnParams = new URLSearchParams(window.location.search)
+  returnParams.delete('id')
+  returnParams.set('page', String(page))
 
   return (
     <main className="page-shell">
-      <a className="back-link" href={`${routeBase}/anime?page=${page}`}>← Back to anime</a>
+      <a className="back-link" href={`${routeBase}/anime?${returnParams.toString()}`}>← Back to anime</a>
       {loading && <p className="message">Loading anime…</p>}
       {error && <p className="message error-message" role="alert">{error}</p>}
       {record && (

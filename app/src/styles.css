@@ -123,6 +123,12 @@ h2, h3, p { margin-top: 0; }
 .danger-button { color: #ffb4bd; }
 .danger-button:hover { border-color: #ff8f9b; }
 .list-heading { margin-bottom: 15px; }
+.catalog-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 0 0 22px; padding: 16px; border: 1px solid #ffffff12; border-radius: 14px; background: #211d2c99; }
+.filter-field { display: grid; min-width: 155px; gap: 7px; color: var(--muted); font-size: .82rem; font-weight: 650; }
+.filter-field select { width: 100%; min-height: 40px; padding: 8px 34px 8px 11px; border: 1px solid #ffffff20; border-radius: 9px; outline: 0; color: var(--ink); background: #211d2c; }
+.filter-field select:focus { border-color: var(--accent); }
+.sort-field { min-width: 230px; }
+.clear-filters { min-height: 40px; }
 
 .record-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
 .anime-card { overflow: hidden; min-width: 0; }
