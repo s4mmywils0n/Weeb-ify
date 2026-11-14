@@ -51,7 +51,7 @@ while (true) {
     ]);
     $body = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    unset($ch);
 
     if ($body === false || $httpCode !== 200) {
         fwrite(STDERR, "Kitsu fetch failed for batch at offset {$offset} (HTTP {$httpCode})\n");
