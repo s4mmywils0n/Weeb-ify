@@ -1,429 +1,453 @@
+<?php
+$page = filter_input(
+    INPUT_GET,
+    'page',
+    FILTER_VALIDATE_INT,
+    ['options' => ['min_range' => 1, 'max_range' => 1000000]]
+);
+$page = $page === false || $page === null ? 1 : $page;
+$searchQuery = isset($_GET['q']) && is_string($_GET['q'])
+    ? trim($_GET['q'])
+    : '';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Weeb Database</title>
-
+    <meta name="theme-color" content="#171421">
+    <title>Manga — Weebi:fy</title>
     <style>
-        * {
-            box-sizing: border-box;
+        :root {
+            color-scheme: dark;
+            --ink: #f7f3ff;
+            --muted: #b8b0c9;
+            --accent: #d6a8ff;
+            --accent-strong: #b56bf0;
         }
+
+        * { box-sizing: border-box; }
 
         body {
-            font-family: Arial, sans-serif;
-            background: #f4f4f9;
-            color: #333;
             margin: 0;
-            padding: 30px;
+            min-height: 100vh;
+            color: var(--ink);
+            background: radial-gradient(ellipse at 75% 10%, #382448 0, #1a1722 42%, #121117 100%);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
         }
 
-        .container {
-            max-width: 1100px;
-            margin: auto;
+        .site-header {
+            display: flex;
+            align-items: center;
+            gap: 28px;
+            min-height: 78px;
+            padding: 14px clamp(20px, 5vw, 72px);
+            border-bottom: 1px solid #ffffff16;
+            background: #171421cc;
+        }
+
+        .brand {
+            flex: 0 0 auto;
+            color: var(--ink);
+            font-size: 1.35rem;
+            font-weight: 800;
+            letter-spacing: -.06em;
+            text-decoration: none;
+        }
+
+        .brand span { color: var(--accent); }
+        .primary-nav { display: flex; align-items: center; gap: 8px; }
+
+        .primary-nav a, .login-link {
+            padding: 10px 13px;
+            border-radius: 999px;
+            color: var(--muted);
+            font-size: .94rem;
+            font-weight: 650;
+            text-decoration: none;
+            transition: background .18s ease, color .18s ease;
+        }
+
+        .primary-nav a:hover, .primary-nav a[aria-current="page"] {
+            color: var(--ink);
+            background: #ffffff12;
+        }
+
+        .header-search {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: min(280px, 25vw);
+            min-width: 170px;
+            margin-left: auto;
+            padding: 0 13px;
+            border: 1px solid #ffffff20;
+            border-radius: 999px;
+            background: #ffffff0a;
+        }
+
+        .header-search svg { flex: 0 0 auto; color: var(--muted); }
+
+        .header-search input {
+            width: 100%;
+            min-width: 0;
+            padding: 10px 0;
+            border: 0;
+            outline: 0;
+            color: var(--ink);
+            background: transparent;
+            font: inherit;
+        }
+
+        .header-search input::placeholder { color: #a59bb5; }
+
+        .login-link {
+            flex: 0 0 auto;
+            color: #21152c;
+            background: var(--accent);
+        }
+
+        .login-link:hover { background: #e5c9ff; }
+
+        main {
+            width: min(1120px, 100% - 40px);
+            margin: 0 auto;
+            padding: 58px 0 72px;
+        }
+
+        .page-heading {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 20px;
+            margin-bottom: 26px;
+        }
+
+        .eyebrow {
+            display: inline-block;
+            margin-bottom: 10px;
+            color: var(--accent);
+            font-size: .76rem;
+            font-weight: 750;
+            letter-spacing: .18em;
+            text-transform: uppercase;
         }
 
         h1 {
-            text-align: center;
-            color: #c3a22b;
+            margin: 0;
+            font-size: clamp(2.5rem, 6vw, 4.3rem);
+            line-height: .98;
+            letter-spacing: -.075em;
         }
 
-        .tabs {
-            display: flex;
-            gap: 10px;
-            margin: 25px 0;
-        }
+        h1 span { color: var(--accent); }
 
-        button {
-            padding: 10px 18px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 15px;
-        }
+        .page-number { margin: 0 0 5px; color: var(--muted); }
 
-        .tab {
-            background: #ddd;
-        }
-
-        .tab.active {
-            background: #6c4ab6;
-            color: white;
-        }
-
-        .panel {
-            background: white;
-            padding: 20px;
-            margin-bottom: 25px;
-            border-radius: 10px;
-            box-shadow: 0 2px 8px #00000010;
-        }
-
-        .form-grid {
+        .record-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 18px;
         }
 
-        input, select {
+        .manga-card {
+            display: block;
+            overflow: hidden;
+            border: 1px solid #ffffff12;
+            border-radius: 16px;
+            color: inherit;
+            background: #211d2ccc;
+            box-shadow: 0 8px 28px #00000020;
+            text-decoration: none;
+            transition: transform .18s ease, border-color .18s ease;
+        }
+
+        .manga-card:hover, .manga-card:focus-within {
+            transform: translateY(-3px);
+            border-color: var(--accent);
+            outline: none;
+        }
+
+        .poster {
+            display: grid;
             width: 100%;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
+            aspect-ratio: 3 / 4;
+            position: relative;
+            padding: 28px;
+            place-items: center;
+            overflow: hidden;
+            color: var(--accent);
+            background: linear-gradient(145deg, #493354, #252131 70%);
+            text-align: center;
         }
 
-        .submit-btn {
-            margin-top: 15px;
-            background: #6c4ab6;
-            color: white;
+        .poster::before {
+            position: absolute;
+            inset: 12px;
+            border: 1px solid #ffffff30;
+            content: "";
+            pointer-events: none;
         }
 
-        .refresh-btn {
-            background: #e5e0f5;
-            color: #493080;
+        .poster-copy { position: relative; z-index: 1; }
+
+        .poster-label {
+            display: block;
+            margin-bottom: 12px;
+            color: #e8cfff;
+            font-size: .68rem;
+            font-weight: 800;
+            letter-spacing: .2em;
+            text-transform: uppercase;
         }
 
-        .table-wrapper {
-            overflow-x: auto;
+        .poster-title {
+            display: block;
+            color: var(--ink);
+            font-size: clamp(1.05rem, 2vw, 1.45rem);
+            font-weight: 850;
+            line-height: 1.15;
+            overflow-wrap: anywhere;
         }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
+        .card-copy { padding: 15px; }
+
+        .card-copy h2 {
+            overflow: hidden;
+            margin: 0 0 8px;
+            font-size: 1.02rem;
+            line-height: 1.35;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
-        th, td {
-            text-align: left;
-            padding: 12px;
-            border-bottom: 1px solid #eee;
+        .card-meta {
+            margin: 0;
+            color: var(--muted);
+            font-size: .88rem;
+            line-height: 1.55;
         }
 
-        th {
-            background: #6c4ab6;
-            color: white;
+        .card-meta + .card-meta { margin-top: 5px; }
+
+        .status-message {
+            grid-column: 1 / -1;
+            margin: 0;
+            padding: 32px;
+            border: 1px solid #ffffff12;
+            border-radius: 16px;
+            color: var(--muted);
+            background: #211d2caa;
+            text-align: center;
         }
 
-        tr:hover {
-            background: #f8f6fc;
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 18px;
+            margin-top: 30px;
         }
 
-        .message {
-            margin-top: 12px;
-            white-space: pre-wrap;
+        .pagination a, .pagination button {
+            display: inline-flex;
+            min-width: 112px;
+            justify-content: center;
+            padding: 11px 16px;
+            border: 1px solid #ffffff20;
+            border-radius: 999px;
+            color: var(--ink);
+            background: #ffffff0a;
+            font: inherit;
+            font-weight: 700;
+            text-decoration: none;
+            cursor: pointer;
         }
 
-        @media (max-width: 600px) {
-            body {
-                padding: 15px;
-            }
+        .pagination a:hover, .pagination button:hover:not(:disabled) {
+            border-color: var(--accent);
+            background: #ffffff12;
+        }
 
-            .form-grid {
-                grid-template-columns: 1fr;
-            }
+        .pagination button:disabled { opacity: .4; cursor: not-allowed; }
+        .pagination .page-count { min-width: 58px; color: var(--muted); text-align: center; }
+
+        @media (max-width: 900px) {
+            .record-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
+
+        @media (max-width: 760px) {
+            .site-header { flex-wrap: wrap; gap: 10px 16px; }
+            .brand { margin-right: auto; }
+            .primary-nav { order: 3; width: 100%; justify-content: center; }
+            .primary-nav a { padding: 9px 11px; }
+            .header-search { order: 2; width: min(230px, 46vw); min-width: 130px; margin-left: 0; }
+            .login-link { order: 2; padding: 9px 12px; }
+        }
+
+        @media (max-width: 560px) {
+            main { width: min(100% - 28px, 1120px); padding-top: 38px; }
+            .record-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+            .card-copy { padding: 12px; }
+            .page-heading { align-items: start; flex-direction: column; }
+        }
+
+        @media (max-width: 420px) {
+            .site-header { padding-inline: 14px; }
+            .primary-nav { gap: 0; }
+            .primary-nav a { padding-inline: 9px; font-size: .88rem; }
+            .header-search { width: 100%; order: 4; }
+            .login-link { margin-left: auto; }
         }
     </style>
 </head>
-
 <body>
-<div class="container">
+    <header class="site-header">
+        <a class="brand" href="home.php" aria-label="Weebi:fy home">Weebi<span>:fy</span></a>
 
-    <h1>Weeb: ify </h1>
-    <p style="text-align:center">
-        Manage your anime and manga collection.
-    </p>
+        <nav class="primary-nav" aria-label="Main navigation">
+            <a href="anime.php">Anime</a>
+            <a href="manga.php" aria-current="page">Manga</a>
+            <a href="products.php">Products</a>
+        </nav>
 
-    <div class="tabs">
-        <button class="tab active" id="animeTab"
-                onclick="switchResource('anime')">
-            Anime
-        </button>
-
-        <button class="tab" id="mangaTab"
-                onclick="switchResource('manga')">
-            Manga
-        </button>
-    </div>
-
-    <section class="panel">
-        <h2 id="formTitle">Add Anime</h2>
-
-        <form id="recordForm">
-            <div class="form-grid">
-                <input name="title" placeholder="Title" required>
-
-                <div id="animeFields" class="form-grid">
-                    <input name="season_aired"
-                           placeholder="Season aired">
-
-                    <input name="year_aired"
-                           type="number"
-                           placeholder="Year aired">
-
-                    <input name="number_of_episodes"
-                           type="number"
-                           min="0"
-                           placeholder="Number of episodes">
-
-                    <input name="number_of_seasons"
-                           type="number"
-                           min="0"
-                           placeholder="Number of seasons">
-
-                    <input name="studio" placeholder="Studio">
-r
-                    <input name="genre" placeholder="Genre">
-                </div>
-
-                <div id="mangaFields" class="form-grid" hidden>
-                    <input name="author" placeholder="Author">
-
-                    <input name="year_published"
-                           type="number"
-                           placeholder="Year published">
-
-                    <input name="number_of_volumes"
-                           type="number"
-                           min="0"
-                           placeholder="Number of volumes">
-
-                    <input name="number_of_chapters"
-                           type="number"
-                           min="0"
-                           placeholder="Number of chapters">
-
-                    <input name="manga_genre"
-                           placeholder="Genre">
-                </div>
-
-                <select name="status" required>
-                    <option value="">Select status</option>
-                    <option value="Watching">Watching</option>
-                    <option value="Reading">Reading</option>
-                    <option value="Completed">Completed</option>
-                    <option value="On Hold">On Hold</option>
-                    <option value="Dropped">Dropped</option>
-                    <option value="Plan to Watch">Plan to Watch</option>
-                    <option value="Plan to Read">Plan to Read</option>
-                </select>
-            </div>
-
-            <button class="submit-btn" type="submit">
-                Add Record
-            </button>
-
-            <div class="message" id="formMessage"></div>
+        <form class="header-search" role="search" action="" method="get">
+            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none">
+                <circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8" />
+                <path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+            <input type="search" name="q" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>" placeholder="Search manga" aria-label="Search manga">
         </form>
-    </section>
 
-    <section class="panel">
-        <h2 id="listTitle">Anime Collection</h2>
+        <a class="login-link" href="../app/src/Login">Log in</a>
+    </header>
 
-        <button class="refresh-btn" onclick="loadRecords()">
-            Refresh Records
-        </button>
-
-        <div class="message" id="listMessage"></div>
-
-        <div class="table-wrapper">
-            <table>
-                 <thead id="tableHead"></thead>
-                <tbody id="tableBody"></tbody>
-            </table>
+    <main>
+        <div class="page-heading">
+            <div>
+                <span class="eyebrow">Your manga collection</span>
+                <h1>Manga <span>shelf.</span></h1>
+            </div>
+            <p class="page-number" id="page-number" aria-live="polite">Page <?= (int) $page ?></p>
         </div>
-    </section>
 
-</div>
+        <section class="record-grid" id="manga-list" aria-label="Manga collection" aria-live="polite">
+            <p class="status-message">Loading manga…</p>
+        </section>
 
-<script>
-    // Change this if your PHP API is in another folder.
-    const API_URL = "./api.php";
+        <nav class="pagination" aria-label="Manga pages">
+            <a id="previous-page" href="#">Previous</a>
+            <span class="page-count" id="page-count">Page <?= (int) $page ?></span>
+            <button id="next-page" type="button" disabled>Next</button>
+        </nav>
+    </main>
 
-    let currentResource = "anime";
+    <script>
+        const currentPage = <?= (int) $page ?>;
+        const itemsPerPage = 20;
+        const list = document.getElementById("manga-list");
+        const previousLink = document.getElementById("previous-page");
+        const nextButton = document.getElementById("next-page");
 
-    const animeColumns = [
-        ["id", "ID"],
-        ["title", "Title"],
-        ["season_aired", "Season Aired"],
-        ["year_aired", "Year"],
-        ["number_of_episodes", "Episodes"],
-        ["number_of_seasons", "Seasons"],
-        ["studio", "Studio"],
-        ["genre", "Genre"],
-        ["status", "Status"]
-    ];
-
-    const mangaColumns = [
-        ["id", "ID"],
-        ["title", "Title"],
-        ["author", "Author"],
-        ["year_published", "Year Published"],
-        ["number_of_volumes", "Volumes"],
-        ["number_of_chapters", "Chapters"],
-        ["genre", "Genre"],
-        ["status", "Status"]
-    ];
-
-    function switchResource(resource) {
-        currentResource = resource;
-
-        document.getElementById("animeTab")
-            .classList.toggle("active", resource === "anime");
-
-        document.getElementById("mangaTab")
-            .classList.toggle("active", resource === "manga");
-
-        document.getElementById("animeFields").hidden =
-            resource !== "anime";
-
-        document.getElementById("mangaFields").hidden =
-            resource !== "manga";
-
-        document.getElementById("formTitle").textContent =
-            "Add " + (resource === "anime" ? "Anime" : "Manga");
-
-        document.getElementById("listTitle").textContent =
-            (resource === "anime" ? "Anime" : "Manga")
-            + " Collection";
-
-        document.getElementById("formMessage").textContent = "";
-
-        loadRecords();
-    }
-
-    async function loadRecords() {
-        const body = document.getElementById("tableBody");
-        const head = document.getElementById("tableHead");
-        const message = document.getElementById("listMessage");
-
-        body.replaceChildren();
-        head.replaceChildren();
-        message.textContent = "Loading...";
-
-        try {
-            const response = await fetch(
-                `${API_URL}/${currentResource}`
-            );
-
-            const records = await response.json();
-
-            if (!response.ok) {
-                throw new Error(records.error || "Failed to load records.");
-            }
-
-            const columns = currentResource === "anime"
-                ? animeColumns
-                : mangaColumns;
-
-            const headerRow = document.createElement("tr");
-
-            columns.forEach(([key, label]) => {
-                const th = document.createElement("th");
-                th.textContent = label;
-                headerRow.appendChild(th);
-            });
-
-            head.appendChild(headerRow);
-
-            if (records.length === 0) {
-                message.textContent = "No records found.";
-                return;
-            }
-
-            records.forEach(record => {
-                const row = document.createElement("tr");
-
-                columns.forEach(([key]) => {
-                    const cell = document.createElement("td");
-                    cell.textContent = record[key] ?? "-";
-                    row.appendChild(cell);
-                });
-
-                body.appendChild(row);
-            });
-
-            message.textContent =
-                `${records.length} record(s) found.`;
-
-        } catch (error) {
-            message.textContent =
-                "Error: " + error.message
-                + "\nCheck that the PHP server and database are running.";
+        function pageUrl(page) {
+            const params = new URLSearchParams(window.location.search);
+            params.set("page", String(page));
+            return `manga.php?${params.toString()}`;
         }
-    }
 
-    document.getElementById("recordForm")
-        .addEventListener("submit", async function(event) {
-            event.preventDefault();
+        function addText(parent, tagName, className, text) {
+            const element = document.createElement(tagName);
+            if (className) element.className = className;
+            element.textContent = text;
+            parent.appendChild(element);
+            return element;
+        }
 
-            const form = event.target;
-            const data = new FormData(form);
-            const record = {};
+        function showMessage(message) {
+            list.replaceChildren();
+            addText(list, "p", "status-message", message);
+        }
 
-            // Collect the fields for the selected resource.
-            for (const [key, value] of data.entries()) {
-                if (key === "manga_genre") {
-                    if (currentResource === "manga" && value.trim()) {
-                        record.genre = value.trim();
-                    }
-                    continue;
-                }
+        function renderRecord(record) {
+            const card = document.createElement("article");
+            card.className = "manga-card";
 
-                if (key === "genre" && currentResource === "manga") {
-                    continue;
-                }
+            const poster = document.createElement("div");
+            poster.className = "poster";
+            const posterCopy = document.createElement("div");
+            posterCopy.className = "poster-copy";
+            addText(posterCopy, "span", "poster-label", "Manga");
+            addText(posterCopy, "span", "poster-title", record.title || "Untitled manga");
+            poster.appendChild(posterCopy);
 
-                if (value.trim() === "") {
-                    continue;
-                }
+            card.appendChild(poster);
+            const copy = document.createElement("div");
+            copy.className = "card-copy";
+            addText(copy, "h2", "", record.title || "Untitled manga");
 
-                if (key === "year_aired"
-                    || key === "number_of_episodes"
-                    || key === "number_of_seasons"
-                    || key === "year_published"
-                    || key === "number_of_volumes"
-                    || key === "number_of_chapters") {
-                    record[key] = Number(value);
-                } else {
-                    record[key] = value.trim();
-                }
+            const author = typeof record.author === "string" && record.author.trim()
+                ? record.author.trim()
+                : "Author unknown";
+            addText(copy, "p", "card-meta", author);
+
+            const details = [];
+            if (record.number_of_volumes !== null && record.number_of_volumes !== undefined) {
+                details.push(`${record.number_of_volumes} ${Number(record.number_of_volumes) === 1 ? "volume" : "volumes"}`);
             }
+            if (record.number_of_chapters !== null && record.number_of_chapters !== undefined) {
+                details.push(`${record.number_of_chapters} ${Number(record.number_of_chapters) === 1 ? "chapter" : "chapters"}`);
+            }
+            if (record.year_published) details.push(String(record.year_published));
+            if (record.status) details.push(record.status);
+            if (record.genre) details.push(record.genre);
+            if (details.length > 0) addText(copy, "p", "card-meta", details.join(" · "));
 
-            const message = document.getElementById("formMessage");
-            message.textContent = "Saving...";
+            card.appendChild(copy);
+            list.appendChild(card);
+        }
 
-            try {
-                const response = await fetch(
-                    `${API_URL}/${currentResource}`,
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify(record)
-                    }
-                );
+        previousLink.href = currentPage > 1 ? pageUrl(currentPage - 1) : "#";
+        previousLink.setAttribute("aria-disabled", currentPage > 1 ? "false" : "true");
+        if (currentPage <= 1) {
+            previousLink.style.pointerEvents = "none";
+            previousLink.style.opacity = ".4";
+        }
 
+        const searchParams = new URLSearchParams({ page: String(currentPage) });
+        const searchQuery = new URLSearchParams(window.location.search).get("q");
+        if (searchQuery && searchQuery.trim()) searchParams.set("q", searchQuery.trim());
+
+        fetch(`../api.php/manga?${searchParams.toString()}`, {
+            headers: { "Accept": "application/json" }
+        })
+            .then(async response => {
                 const result = await response.json();
-
                 if (!response.ok) {
-                    throw new Error(
-                        result.error || "Could not add record."
-                    );
+                    throw new Error(result.error || "Could not load manga records.");
+                }
+                if (!Array.isArray(result)) {
+                    throw new Error("The API returned an unexpected response.");
+                }
+                return result;
+            })
+            .then(records => {
+                if (records.length === 0) {
+                    showMessage(searchQuery
+                        ? "No manga matched your search."
+                        : currentPage === 1
+                            ? "No manga records found yet."
+                            : "No manga on this page.");
+                    return;
                 }
 
-                message.textContent = "Record added successfully!";
-                form.reset();
-
-                await loadRecords();
-
-            } catch (error) {
-                message.textContent = "Error: " + error.message;
-            }
-        });
-
-    // Display anime records when the page first opens.
-    loadRecords();
-</script>
+                list.replaceChildren();
+                records.forEach(renderRecord);
+                nextButton.disabled = records.length < itemsPerPage;
+                nextButton.addEventListener("click", () => {
+                    window.location.href = pageUrl(currentPage + 1);
+                });
+            })
+            .catch(error => showMessage(`Could not load manga: ${error.message}`));
+    </script>
 </body>
 </html>
