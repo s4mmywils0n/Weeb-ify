@@ -129,12 +129,24 @@ if ($id === null) {
 
         $itemsPerPage = 20;
         $offset = ($page - 1) * $itemsPerPage;
+        $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
+            ? trim($_GET['q'])
+            : '';
+        $searchCondition = $table === 'manga' && $searchQuery !== ''
+            ? ' WHERE (title ILIKE :search_title OR author ILIKE :search_author OR genre ILIKE :search_genre)'
+            : '';
 
         $stmt = $pdo->prepare(
-            "SELECT * FROM public.$table
+            "SELECT * FROM public.$table" . $searchCondition . "
              ORDER BY id ASC
              LIMIT :limit OFFSET :offset"
         );
+        if ($searchCondition !== '') {
+            $searchTerm = '%' . $searchQuery . '%';
+            $stmt->bindValue(':search_title', $searchTerm, PDO::PARAM_STR);
+            $stmt->bindValue(':search_author', $searchTerm, PDO::PARAM_STR);
+            $stmt->bindValue(':search_genre', $searchTerm, PDO::PARAM_STR);
+        }
         $stmt->bindValue(':limit', $itemsPerPage, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
