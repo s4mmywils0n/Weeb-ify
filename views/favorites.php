@@ -349,6 +349,7 @@ function safeImageUrl($value): string
 
     <main>
         <a class="back-link" href="anime.php">← Back to anime</a>
+        <br>
         <span class="eyebrow">Your library</span>
         <h1>Favorite <span>anime.</span></h1>
 

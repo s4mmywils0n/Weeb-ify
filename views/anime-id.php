@@ -48,6 +48,7 @@ $supabaseKey = (string) ($env['VITE_SUPABASE_PUBLISHABLE_KEY'] ?? '');
             <a href="anime.php" aria-current="page">Anime</a>
             <a href="manga.php">Manga</a>
             <a href="products.php">Products</a>
+            <a href="favorites.php">Favorites</a>
         </nav>
 
         <form class="header-search" role="search" action="" method="get">
@@ -83,6 +84,7 @@ $supabaseKey = (string) ($env['VITE_SUPABASE_PUBLISHABLE_KEY'] ?? '');
             <a href="anime.php">Anime</a>
             <a href="manga.php">Manga</a>
             <a href="products.php">Products</a>
+            <a href="favorites.php"></a>
         </nav>
     </footer>
 
@@ -284,6 +286,7 @@ $supabaseKey = (string) ($env['VITE_SUPABASE_PUBLISHABLE_KEY'] ?? '');
                 const label = document.createElement("dt");
                 label.textContent = key.replaceAll("_", " ");
                 const detailValue = document.createElement("dd");
+                
 
                 detailValue.textContent = value === null || value === "" ? "—" : String(value);
 

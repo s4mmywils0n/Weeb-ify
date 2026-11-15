@@ -16,6 +16,7 @@
             <a href="anime.php">Anime</a>
             <a href="manga.php">Manga</a>
             <a href="products.php">Products</a>
+             <a href="favorites.php">Favorites</a>
         </nav>
 
         <form class="header-search" role="search" action="" method="get">
@@ -43,6 +44,7 @@
             <a href="anime.php">Anime</a>
             <a href="manga.php">Manga</a>
             <a href="products.php">Products</a>
+             <a href="favorites.php">Favorites</a>
         </nav>
     </footer>
 </body>

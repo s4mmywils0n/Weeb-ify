@@ -28,6 +28,7 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
             <a href="anime.php" aria-current="page">Anime</a>
             <a href="manga.php">Manga</a>
             <a href="products.php">Products</a>
+             <a href="favorites.php">Favorites</a>
         </nav>
 
         <form class="header-search" role="search" action="" method="get">
@@ -45,7 +46,7 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
         <div class="page-heading">
             <div>
                 <span class="eyebrow">Your collection</span>
-                <h1>Anime <span>favorites.</span></h1>
+                <h1>Anime <span>List.</span></h1>
             </div>
             <p class="page-number" id="page-number" aria-live="polite">Page <?= (int) $page ?></p>
         </div>
@@ -66,6 +67,7 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
             <a href="anime.php">Anime</a>
             <a href="manga.php">Manga</a>
             <a href="products.php">Products</a>
+             <a href="favorites.php">Favorites</a>
         </nav>
     </footer>
 
