@@ -30,207 +30,8 @@ $returnUrl = 'anime.php?' . http_build_query(array_filter([
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#171421">
     <title>Anime details — Weebi:fy</title>
-    <style>
-        :root {
-            color-scheme: dark;
-            --ink: #f7f3ff;
-            --muted: #b8b0c9;
-            --accent: #d6a8ff;
-        }
-
-        * { box-sizing: border-box; }
-
-        body {
-            margin: 0;
-            min-height: 100vh;
-            color: var(--ink);
-            background: radial-gradient(ellipse at 75% 10%, #382448 0, #1a1722 42%, #121117 100%);
-            font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-        }
-
-        .site-header {
-            display: flex;
-            align-items: center;
-            gap: 28px;
-            min-height: 78px;
-            padding: 14px clamp(20px, 5vw, 72px);
-            border-bottom: 1px solid #ffffff16;
-            background: #171421cc;
-        }
-
-        .brand {
-            flex: 0 0 auto;
-            color: var(--ink);
-            font-size: 1.35rem;
-            font-weight: 800;
-            letter-spacing: -.06em;
-            text-decoration: none;
-        }
-
-        .brand span { color: var(--accent); }
-        .primary-nav { display: flex; align-items: center; gap: 8px; }
-
-        .primary-nav a, .login-link {
-            padding: 10px 13px;
-            border-radius: 999px;
-            color: var(--muted);
-            font-size: .94rem;
-            font-weight: 650;
-            text-decoration: none;
-            transition: background .18s ease, color .18s ease;
-        }
-
-        .primary-nav a:hover, .primary-nav a[aria-current="page"] {
-            color: var(--ink);
-            background: #ffffff12;
-        }
-
-        .header-search {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            width: min(280px, 25vw);
-            min-width: 170px;
-            margin-left: auto;
-            padding: 0 13px;
-            border: 1px solid #ffffff20;
-            border-radius: 999px;
-            background: #ffffff0a;
-        }
-
-        .header-search svg { flex: 0 0 auto; color: var(--muted); }
-
-        .header-search input {
-            width: 100%;
-            min-width: 0;
-            padding: 10px 0;
-            border: 0;
-            outline: 0;
-            color: var(--ink);
-            background: transparent;
-            font: inherit;
-        }
-
-        .header-search input::placeholder { color: #a59bb5; }
-
-        .login-link {
-            flex: 0 0 auto;
-            color: #21152c;
-            background: var(--accent);
-        }
-
-        .login-link:hover { background: #e5c9ff; }
-
-        main { width: min(100% - 40px, 1000px); margin: 0 auto; padding: 52px 0 72px; }
-
-        .back-link {
-            display: inline-flex;
-            margin-bottom: 25px;
-            color: var(--accent);
-            font-weight: 700;
-            text-decoration: none;
-        }
-
-        .back-link:hover { text-decoration: underline; }
-
-        .eyebrow {
-            display: inline-block;
-            margin-bottom: 10px;
-            color: var(--accent);
-            font-size: .76rem;
-            font-weight: 750;
-            letter-spacing: .18em;
-            text-transform: uppercase;
-        }
-
-        h1 {
-            margin: 0 0 25px;
-            font-size: clamp(2.5rem, 6vw, 4.3rem);
-            line-height: .98;
-            letter-spacing: -.075em;
-        }
-
-        h1 span { color: var(--accent); }
-
-        .detail-panel {
-            display: grid;
-            grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
-            gap: 30px;
-            padding: 22px;
-            border: 1px solid #ffffff12;
-            border-radius: 20px;
-            background: #211d2ccc;
-            box-shadow: 0 12px 38px #00000025;
-        }
-
-        .poster {
-            display: grid;
-            width: 100%;
-            min-height: 300px;
-            aspect-ratio: 3 / 4;
-            place-items: center;
-            overflow: hidden;
-            border-radius: 13px;
-            color: var(--accent);
-            background: linear-gradient(145deg, #493354, #252131 70%);
-            font-size: 1.2rem;
-            font-weight: 800;
-            text-align: center;
-        }
-
-        .poster img { width: 100%; height: 100%; object-fit: cover; }
-
-        .synopsis {
-            margin: 0 0 22px;
-            color: var(--muted);
-            line-height: 1.7;
-            white-space: pre-wrap;
-        }
-
-        .details-list {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 0 20px;
-            margin: 0;
-        }
-
-        .detail-item { padding: 12px 0; border-top: 1px solid #ffffff12; min-width: 0; }
-        .detail-item dt { margin-bottom: 5px; color: var(--muted); font-size: .78rem; text-transform: capitalize; }
-        .detail-item dd { overflow-wrap: anywhere; margin: 0; line-height: 1.45; }
-        .detail-item dd a { color: var(--accent); }
-
-        .status-message {
-            margin: 0;
-            padding: 24px;
-            border: 1px solid #ffffff12;
-            border-radius: 16px;
-            color: var(--muted);
-            background: #211d2ccc;
-            text-align: center;
-        }
-
-        @media (max-width: 760px) {
-            .site-header { flex-wrap: wrap; gap: 10px 16px; }
-            .brand { margin-right: auto; }
-            .primary-nav { order: 3; width: 100%; justify-content: center; }
-            .primary-nav a { padding: 9px 11px; }
-            .header-search { order: 2; width: min(230px, 46vw); min-width: 130px; margin-left: 0; }
-            .login-link { order: 2; padding: 9px 12px; }
-            .detail-panel { grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); gap: 22px; }
-        }
-
-        @media (max-width: 560px) {
-            .site-header { padding-inline: 14px; }
-            .primary-nav { gap: 0; }
-            .primary-nav a { padding-inline: 9px; font-size: .88rem; }
-            .header-search { width: 100%; order: 4; }
-            .login-link { margin-left: auto; }
-            main { width: min(100% - 28px, 1000px); padding-top: 35px; }
-            .detail-panel { grid-template-columns: 1fr; padding: 15px; }
-            .poster { width: min(100%, 340px); min-height: 0; margin: 0 auto; }
-            .details-list { grid-template-columns: 1fr; }
-        }
-    </style>
+   
+    <link rel="stylesheet" href="site-chrome.css">
 </head>
 <body>
     <header class="site-header">
@@ -262,6 +63,14 @@ $returnUrl = 'anime.php?' . http_build_query(array_filter([
             <p class="status-message">Loading anime details…</p>
         </section>
     </main>
+    <footer class="site-footer">
+        <p>Weebi:fy — Your collection, your way.</p>
+        <nav class="footer-nav" aria-label="Footer navigation">
+            <a href="anime.php">Anime</a>
+            <a href="manga.php">Manga</a>
+            <a href="products.php">Products</a>
+        </nav>
+    </footer>
 
     <script>
         const recordId = <?= $recordId === null ? 'null' : (int) $recordId ?>;
