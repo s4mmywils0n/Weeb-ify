@@ -22,6 +22,13 @@ $returnUrl = 'anime.php?' . http_build_query(array_filter([
     'page' => $page,
     'q' => $searchQuery !== '' ? $searchQuery : null,
 ]));
+
+$envPath = dirname(__DIR__) . '/.env';
+$env = is_file($envPath)
+    ? (parse_ini_file($envPath, false, INI_SCANNER_RAW) ?: [])
+    : [];
+$supabaseUrl = rtrim((string) ($env['VITE_SUPABASE_URL'] ?? ''), '/');
+$supabaseKey = (string) ($env['VITE_SUPABASE_PUBLISHABLE_KEY'] ?? '');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -56,8 +63,15 @@ $returnUrl = 'anime.php?' . http_build_query(array_filter([
 
     <main>
         <a class="back-link" href="<?= htmlspecialchars($returnUrl, ENT_QUOTES, 'UTF-8') ?>">← Back to anime</a>
+        <br>
         <span class="eyebrow">Anime details</span>
         <h1 id="record-title">Loading <span>anime…</span></h1>
+        <div class="favorite-control">
+            <button type="button" id="favorite-toggle" class="favorite-toggle" hidden disabled>
+                Add to favorites
+            </button>
+            <p id="favorite-message" class="favorite-message" role="status" aria-live="polite"></p>
+        </div>
 
         <section id="record-content" aria-live="polite">
             <p class="status-message">Loading anime details…</p>
@@ -74,8 +88,117 @@ $returnUrl = 'anime.php?' . http_build_query(array_filter([
 
     <script>
         const recordId = <?= $recordId === null ? 'null' : (int) $recordId ?>;
+        const supabaseUrl = <?= json_encode($supabaseUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        const supabaseKey = <?= json_encode($supabaseKey, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
         const content = document.getElementById("record-content");
         const title = document.getElementById("record-title");
+        const favoriteButton = document.getElementById("favorite-toggle");
+        const favoriteMessage = document.getElementById("favorite-message");
+        const favoriteUserId = 1;
+        let currentAnimeId = null;
+        let isFavorite = false;
+
+        function favoritesUrl(animeId) {
+            const query = new URLSearchParams({
+                user_id: `eq.${favoriteUserId}`,
+                anime_id: `eq.${animeId}`
+            });
+            return `${supabaseUrl}/rest/v1/favorites?${query.toString()}`;
+        }
+
+        async function favoriteRequest(url, options = {}) {
+            const response = await fetch(url, {
+                ...options,
+                headers: {
+                    "apikey": supabaseKey,
+                    "Authorization": `Bearer ${supabaseKey}`,
+                    "Accept": "application/json",
+                    ...(options.headers || {})
+                }
+            });
+            const body = await response.text();
+            let result = null;
+
+            if (body !== "") {
+                try {
+                    result = JSON.parse(body);
+                } catch {
+                    throw new Error("The favorites service returned an invalid response.");
+                }
+            }
+
+            if (!response.ok) {
+                throw new Error(result?.message || result?.error || `Favorites request failed (${response.status}).`);
+            }
+
+            return result;
+        }
+
+        function setFavoriteButtonState() {
+            favoriteButton.textContent = isFavorite ? "Remove from favorites" : "Add to favorites";
+            favoriteButton.setAttribute("aria-pressed", String(isFavorite));
+        }
+
+        async function loadFavoriteState(animeId) {
+            if (!supabaseUrl || !supabaseKey) {
+                favoriteButton.disabled = true;
+                favoriteMessage.textContent = "Favorites are unavailable because Supabase is not configured.";
+                return;
+            }
+
+            try {
+                const query = new URLSearchParams({
+                    select: "anime_id",
+                    user_id: `eq.${favoriteUserId}`,
+                    anime_id: `eq.${animeId}`,
+                    limit: "1"
+                });
+                const favorites = await favoriteRequest(
+                    `${supabaseUrl}/rest/v1/favorites?${query.toString()}`
+                );
+                isFavorite = Array.isArray(favorites) && favorites.length > 0;
+                setFavoriteButtonState();
+                favoriteButton.disabled = false;
+                favoriteButton.hidden = false;
+            } catch (error) {
+                favoriteButton.disabled = true;
+                favoriteButton.hidden = false;
+                favoriteMessage.textContent = `Could not check favorites: ${error.message}`;
+            }
+        }
+
+        favoriteButton.addEventListener("click", async () => {
+            if (!currentAnimeId) return;
+
+            favoriteButton.disabled = true;
+            favoriteMessage.textContent = "";
+            try {
+                if (isFavorite) {
+                    await favoriteRequest(favoritesUrl(currentAnimeId), {
+                        method: "DELETE"
+                    });
+                    isFavorite = false;
+                } else {
+                    await favoriteRequest(`${favoritesUrl(currentAnimeId)}&on_conflict=user_id,anime_id`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Prefer": "resolution=ignore-duplicates,return=minimal"
+                        },
+                        body: JSON.stringify({
+                            user_id: favoriteUserId,
+                            anime_id: currentAnimeId
+                        })
+                    });
+                    isFavorite = true;
+                }
+                setFavoriteButtonState();
+            } catch (error) {
+                favoriteMessage.textContent = `Could not update favorites: ${error.message}`;
+            } finally {
+                favoriteButton.disabled = false;
+            }
+        });
 
         function showError(message) {
             content.replaceChildren();
@@ -96,6 +219,17 @@ $returnUrl = 'anime.php?' . http_build_query(array_filter([
         }
 
         function renderRecord(record) {
+            currentAnimeId = record.anime_id == null ? null : String(record.anime_id);
+            if (currentAnimeId) {
+                favoriteButton.hidden = false;
+                favoriteButton.disabled = true;
+                loadFavoriteState(currentAnimeId);
+            } else {
+                favoriteButton.hidden = false;
+                favoriteButton.disabled = true;
+                favoriteMessage.textContent = "This anime does not have an ID that can be favorited.";
+            }
+
             title.replaceChildren();
             title.append(document.createTextNode(record.title || "Untitled "));
             const accent = document.createElement("span");

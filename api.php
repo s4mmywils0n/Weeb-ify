@@ -95,7 +95,7 @@ $resources = [
 ];
 
 // 6. Match the requested endpoint (filter)
-if (!preg_match('#^/(anime|manga)(?:/([0-9]+))?/?$#', $path, $matches)) {
+if (!preg_match('#^/(anime|manga|favorites|user)(?:/([0-9]+))?/?$#', $path, $matches)) {
     http_response_code(404);
     echo json_encode(["error" => "Endpoint not found"]);
     exit;
@@ -163,6 +163,8 @@ if ($id === null) {
         }
 
         // Title is required
+        if($table!='user')
+            {
         if (
             !isset($input['title']) ||
             !is_string($input['title']) ||
@@ -174,6 +176,7 @@ if ($id === null) {
             ]);
             exit;
         }
+            }
 
         // Reject unknown fields
         $unknownFields = array_diff(
