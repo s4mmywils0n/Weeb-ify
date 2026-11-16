@@ -15,7 +15,11 @@ if (file_exists($envPath)) {
     $user = $env['user'];
     $password = $env['password'];
 } else {
-    echo ("Error: .env file not found.");
+    // Stop here: before, it printed a message and carried on with undefined variables
+    error_log('Favs.php: .env file not found at ' . $envPath);
+    http_response_code(500);
+    echo json_encode(['error' => 'Server configuration error']);
+    exit(1);
 }
 $dsn = "pgsql:host=$host;port=$port;dbname=$database";
 
@@ -24,7 +28,11 @@ $pdo = new PDO($dsn, $user, $password, [
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 ]);
 } catch (PDOException $e) {
-    echo ("Error connecting to the database: " . $e->getMessage());
+    // The exception message can contain the host and username, so it is logged, not shown
+    error_log('Favs.php: database connection failed: ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['error' => 'Database connection failed']);
+    exit(1);
 }
 
 $sql = "CREATE TABLE IF NOT EXISTS favorites (

@@ -29,9 +29,11 @@ try {
         PDO::ATTR_TIMEOUT            => 15,
     ]);
 } catch (PDOException $e) {
+    // The exception message can contain the host and username, so it is logged, not shown
+    error_log('Category.php: database connection failed: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['error' => 'Database connection failed', 'detail' => $e->getMessage()]);
-    exit;
+    echo json_encode(['error' => 'Database connection failed']);
+    exit(1);
 }
 
 // 2. Canonical genre list

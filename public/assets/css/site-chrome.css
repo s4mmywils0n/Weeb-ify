@@ -293,6 +293,143 @@ body {
   background: #ffffff0a;
 }
 
+.header-search[data-suggest-url] {
+  position: relative;
+}
+
+/* Header search: live anime suggestions */
+.search-suggest {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: max(100%, min(340px, calc(100vw - 28px)));
+  overflow: hidden;
+  border: 1px solid #ffffff20;
+  border-radius: 14px;
+  background: #1f1a2b;
+  box-shadow: 0 18px 40px #00000066;
+}
+
+.search-suggest[hidden],
+.search-suggest [hidden] {
+  display: none;
+}
+
+.search-suggest-list {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+}
+
+.search-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 7px 8px;
+  border-radius: 10px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.search-suggest-item:hover,
+[aria-selected="true"] > .search-suggest-item {
+  background: #ffffff12;
+}
+
+.search-suggest-thumb {
+  flex: 0 0 34px;
+  height: 48px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #ffffff10;
+}
+
+.search-suggest-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.search-suggest-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.search-suggest-title {
+  overflow: hidden;
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-suggest-meta {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-suggest-status {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.search-suggest-status.is-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.search-suggest-status.is-loading::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ffffff26;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: search-spin 0.7s linear infinite;
+}
+
+@keyframes search-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-suggest-status.is-loading::before {
+    animation-duration: 2s;
+  }
+}
+
+.search-suggest-more {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  border: 0;
+  border-top: 1px solid #ffffff14;
+  color: var(--accent);
+  background: transparent;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+}
+
+.search-suggest-more:hover,
+.search-suggest-more.is-active {
+  background: #ffffff12;
+}
+
 .header-search svg {
   flex: 0 0 auto;
   color: var(--muted);
@@ -313,14 +450,40 @@ body {
   color: #a59bb5;
 }
 
+.header-auth {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-auth form {
+  margin: 0;
+}
+
 .login-link {
   flex: 0 0 auto;
+  border: 0;
   color: #21152c;
   background: var(--accent);
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
 }
 
 .login-link:hover {
   background: #e5c9ff;
+}
+
+.login-link-secondary {
+  color: var(--ink);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px #ffffff2a;
+}
+
+.login-link-secondary:hover,
+.login-link-secondary[aria-current="page"] {
+  background: #ffffff12;
 }
 
 main {
@@ -479,6 +642,40 @@ a.anime-card:focus-visible {
   text-align: center;
 }
 
+.page-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-jump[hidden] {
+  display: none;
+}
+
+.page-jump input {
+  min-width: 5ch;
+  padding: 6px 8px;
+  border: 1px solid #ffffff20;
+  border-radius: 8px;
+  color: var(--ink);
+  background: #ffffff0a;
+  font: inherit;
+  font-weight: 700;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.page-jump input::-webkit-outer-spin-button,
+.page-jump input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.page-jump input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 @media (max-width: 900px) {
   .record-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -507,8 +704,10 @@ a.anime-card:focus-visible {
     min-width: 130px;
     margin-left: 0;
   }
-  .login-link {
+  .header-auth {
     order: 2;
+  }
+  .login-link {
     padding: 9px 12px;
   }
 }
@@ -546,9 +745,32 @@ a.anime-card:focus-visible {
     width: 100%;
     order: 4;
   }
-  .login-link {
+  .header-auth {
     margin-left: auto;
   }
+}
+
+.search-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: -12px 0 22px;
+  color: var(--muted);
+}
+
+.search-summary strong {
+  color: var(--ink);
+}
+
+.search-summary a {
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.search-summary a:hover {
+  text-decoration: underline;
 }
 
 /* Anime filters + sorting */

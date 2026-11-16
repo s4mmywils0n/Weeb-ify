@@ -18,7 +18,11 @@ if (file_exists($envPath)) {
     $user = $env['user'];
     $password = $env['password'];
 } else {
-    die("Error: .env file not found.");
+    // Proper error status + JSON instead of die(); details go to the PHP error log only
+    error_log('db.php: .env file not found at ' . $envPath);
+    http_response_code(500);
+    echo json_encode(['error' => 'Server configuration error']);
+    exit(1);
 }
 $dsn = "pgsql:host=$host;port=$port;dbname=$database";
 
@@ -27,35 +31,21 @@ $pdo = new PDO($dsn, $user, $password, [
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 ]);
 } catch (PDOException $e) {
-    die("Error connecting to the database: " . $e->getMessage());
+    // The exception message can contain the host and username, so never print it
+    error_log('db.php: database connection failed: ' . $e->getMessage());
+    http_response_code(500);
+    echo json_encode(['error' => 'Database connection failed']);
+    exit(1);
 }
 
 $ch = "https://kitsu.io/api/edge/anime";
 $page = 20;
 $fetch = 800;
 
-$sql = "CREATE TABLE IF NOT EXISTS anime (
-    id SERIAL PRIMARY KEY,
-    anime_id VARCHAR(255) UNIQUE,
-    slug VARCHAR(255),
-    image TEXT,
-    title TEXT,
-    synopsis TEXT,
-    ageRating VARCHAR(50),
-    category VARCHAR(50),
-    createdAt TIMESTAMP,
-    endDate TIMESTAMP,
-    episodeCount INT,
-    popularityRank INT,
-    showType VARCHAR(50),
-    status VARCHAR(50),
-    kitsu_url TEXT
-)";
+// The anime table is created by database/schema.sql (run that first).
+// Column names: see schema.sql (age_rating, show_type, ...).
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute();
-
-//test to see if there is data in the db 
+//test to see if there is data in the db
 
 $sql = "SELECT id FROM anime WHERE id = 1";
 $stmt = $pdo->prepare($sql);
@@ -66,7 +56,7 @@ if ($stmt->rowCount() > 0) {
     exit;
 }
 
-$sql = "INSERT INTO anime (anime_id, slug, image, title, synopsis, ageRating, createdAt, endDate, episodeCount, popularityRank, showType, status, kitsu_url)
+$sql = "INSERT INTO anime (anime_id, slug, image, title, synopsis, age_rating, created_at, end_date, episode_count, popularity_rank, show_type, status, kitsu_url)
         VALUES (:anime_id, :slug, :image, :title, :synopsis, :ageRating, :createdAt, :endDate, :episodeCount, :popularityRank, :showType, :status, :kitsu_url)";
 
 
@@ -84,9 +74,10 @@ for($i = 0; $i < $fetch; $i += $page) {
     unset($curlHandle);
 
     if ($anime_ === FALSE) {
+        error_log("db.php: Kitsu request failed ($url): $curlErr");
         http_response_code(502);
-        echo json_encode(['error' => 'cUrl Failed', 'detail' => $curlErr]);
-        exit;
+        echo json_encode(['error' => 'Could not reach the Kitsu API']);
+        exit(1);
     }
 
     $response = json_decode($anime_, true);
@@ -115,7 +106,8 @@ for($i = 0; $i < $fetch; $i += $page) {
                 ':kitsu_url' => $slug ? "https://kitsu.io/anime/{$slug}" : null,
             ]);
         } catch (PDOException $e) {
-            echo "Error inserting anime: " . htmlspecialchars($e->getMessage()) . "\n";
+            // Skip this anime and keep going; the reason goes to the log, not the output
+            error_log('db.php: insert failed for Kitsu anime ' . ($anime['id'] ?? '?') . ': ' . $e->getMessage());
         }
     }
     //fkn added sleep(1) to be nice to the api mother fucker stopped the load :(

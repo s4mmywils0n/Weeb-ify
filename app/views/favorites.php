@@ -26,7 +26,7 @@ if ($supabaseUrl === '' || $supabaseKey === '') {
     $error = 'Supabase API configuration is missing.';
 } else {
     $query = http_build_query([
-        'select'  => '*,anime:anime_id(id,anime_id,title,image,episodecount,status,showtype,kitsu_url,agerating,popularityrank)',
+        'select'  => '*,anime:anime_id(id,anime_id,title,image,episode_count,status,show_type,kitsu_url,age_rating,popularity_rank)',
         'user_id' => 'eq.' . $userId,
         'order'   => 'created_at.desc',
     ], '', '&', PHP_QUERY_RFC3986);
@@ -354,8 +354,8 @@ require __DIR__ . '/partials/header.php';
                         $anime = $fav['anime'] ?? [];
                         $title = $anime['title'] ?? 'Untitled anime';
                         $image = safeImageUrl($anime['image'] ?? $fav['image'] ?? '');
-                        $episodeCount = $anime['episodecount'] ?? $fav['episode_count'] ?? null;
-                        $showType = $anime['showtype'] ?? $fav['show_type'] ?? null;
+                        $episodeCount = $anime['episode_count'] ?? $fav['episode_count'] ?? null;
+                        $showType = $anime['show_type'] ?? $fav['show_type'] ?? null;
                         $status = $anime['status'] ?? null;
                         $animeId = $fav['anime_id'] ?? ($anime['anime_id'] ?? '');
                         $meta = array_filter([$showType, $episodeCount ? $episodeCount . ' episodes' : null, $status]);

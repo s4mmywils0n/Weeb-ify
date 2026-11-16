@@ -49,6 +49,13 @@ define('API_URL', $projectDir . '/api.php');
 
 $uri = '/' . ltrim(substr($uri, strlen($basePath)), '/');
 
+// api.php lives outside public/. Apache serves it directly, but `php -S ... -t public`
+// can't see it and sends /api.php/... here instead, so hand those requests over.
+if ($uri === '/api.php' || str_starts_with($uri, '/api.php/')) {
+    require __DIR__ . '/../api.php';
+    exit;
+}
+
 // The current page inside the site, with its query string, e.g. /profile/1/favorites?page=2
 $query = parse_url($_SERVER['REQUEST_URI'], PHP_URL_QUERY);
 define('CURRENT_PATH', $uri . ($query ? '?' . $query : ''));
@@ -116,6 +123,9 @@ $router->get('/login', fn() => view('login'), [GuestMiddleware::class]);
 $router->post('/login', [AuthController::class, 'login'], [GuestMiddleware::class]);
 
 $router->get('/register', fn() => view('register'), [GuestMiddleware::class]);
+
+// Header "Log out" button submits here: forget who is logged in, then go home
+$router->post('/logout', [AuthController::class, 'logout']);
 
 // Sign-up form submits here: validate, check username/email, create the user
 $router->post('/register', [AuthController::class, 'register'], [GuestMiddleware::class]);

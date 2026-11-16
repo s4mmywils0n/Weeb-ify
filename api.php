@@ -1,406 +1,83 @@
 <?php
-// 1. Database Configuration
 
-$envPath = __DIR__ . '/.env';
+declare(strict_types=1);
 
-if (file_exists($envPath)) {
-    $env = parse_ini_file($envPath);
-    $host = $env['host'];
-    $port = $env['port'];
-    $database = $env['database'];
-    $user = $env['user'];
-    $password = $env['password'];
-} else {
-    die("Error: .env file not found.");
-}
-$dsn = "pgsql:host=$host;port=$port;dbname=$database";
+/*
+ * Weeb-ify API entry point:  /api.php/anime, /api.php/anime/12, /api.php/manga, ...
+ *
+ * Every request goes through the same middleware, in this order:
+ *
+ *   1. RequestId         give the request an id (X-Request-Id header, error bodies, logs)
+ *   2. RequestLogger     one log line per request: method, path, status, time, format
+ *   3. Cors              CORS headers for allowed origins; answers OPTIONS preflights
+ *   4. ErrorHandler      any error from here down -> safe {"error", "requestId"} response
+ *   5. ContentNegotiation  Accept header -> JSON / XML / YAML, otherwise 406
+ *   6. Route             known resource + id? allowed method? otherwise 404 / 405
+ *   7. JsonBody          POST/PUT/PATCH: Content-Type (415), size (413), valid JSON object (400)
+ *   -> ResourceController  the actual create / read / update / delete
+ *
+ * Then ResponseWriter sends the result in the chosen format.
+ * Settings (resources, allowed fields, CORS origins, log file): app/config/api.php
+ * Authentication/authorization is added in Build 3.
+ */
 
+// Never print PHP errors into API responses; ErrorHandlerMiddleware logs them instead.
+ini_set('display_errors', '0');
 
+require_once __DIR__ . '/app/Api/bootstrap.php';
 
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    // true = PHP prepares the queries itself. Supabase's connection pooler can run a query on a
-    // different connection than the one it was prepared on, which randomly fails with
-    // 'prepared statement "pdo_stmt_..." does not exist'. Values are still escaped safely.
-    PDO::ATTR_EMULATE_PREPARES => true,
-];
+use App\Api\ApiRequest;
+use App\Api\ApiResponse;
+use App\Api\Controllers\ResourceController;
+use App\Api\Logger;
+use App\Api\Middleware\ContentNegotiationMiddleware;
+use App\Api\Middleware\CorsMiddleware;
+use App\Api\Middleware\ErrorHandlerMiddleware;
+use App\Api\Middleware\JsonBodyMiddleware;
+use App\Api\Middleware\RequestIdMiddleware;
+use App\Api\Middleware\RequestLoggerMiddleware;
+use App\Api\Middleware\RouteMiddleware;
+use App\Api\Pipeline;
+use App\Api\ResponseWriter;
+use App\Services\PDOService;
 
+$config = require __DIR__ . '/app/config/api.php';
+$animeFilters = require __DIR__ . '/app/config/anime-filters.php';
 
-// 2. Configure API headers
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json; charset=UTF-8");
-header("Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
+$logger = new Logger($config['log_file']);
+$request = ApiRequest::fromGlobals();
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
-
-//connect to the anime API
-
-
-// 3. Connect to the database
-try {
-    $pdo = new PDO($dsn, $user, $password, $options);
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode(["error" => "Database connection failed"]);
-    exit;
-}
-
-// 4. Identify the HTTP method and URI
-$method = $_SERVER['REQUEST_METHOD'];
-$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-
-
-// Base path: /Web-Services/api.php
-$apiPosition = strpos($uri, '/Weeb-ify/api.php');
-
-if ($apiPosition === false) {
-    http_response_code(404);
-    echo json_encode(["error" => "Endpoint not found"]);
-    exit;
-}
-
-$path = substr(
-    $uri,
-    $apiPosition + strlen('/Weeb-ify/api.php')
+// Connects to the database only when the controller runs a query, so a missing .env
+// or a database outage becomes a logged 500 instead of a die() message.
+$controller = new ResourceController(
+    new PDOService(),
+    $config['resources'],
+    $animeFilters,
+    $config['items_per_page']
 );
 
-// 5. Define the allowed resources and fields
-$resources = [
-    'anime' => [
-        'anime_id',
-        'slug',
-        'image',
-        'title',
-        'synopsis',
-        'agerating',
-        'createdat',
-        'enddate',
-        'episodecount',
-        'popularityrank',
-        'showtype',
-        'status',
-        'kitsu_url'
+$pipeline = new Pipeline(
+    [
+        new RequestIdMiddleware(),
+        new RequestLoggerMiddleware($logger),
+        new CorsMiddleware($config['cors_origins']),
+        new ErrorHandlerMiddleware($logger),
+        new ContentNegotiationMiddleware(),
+        new RouteMiddleware(array_keys($config['resources'])),
+        new JsonBodyMiddleware($config['max_body_bytes']),
     ],
-    'manga' => [
-        'title',
-        'author',
-        'year_published',
-        'number_of_volumes',
-        'number_of_chapters',
-        'genre',
-        'status'
-    ]
-];
-
-// 6. Match the requested endpoint (filter)
-if (!preg_match('#^/(anime|manga|favorites|user)(?:/([0-9]+))?/?$#', $path, $matches)) {
-    http_response_code(404);
-    echo json_encode(["error" => "Endpoint not found"]);
-    exit;
-}
-
-$table = $matches[1];
-$id = isset($matches[2]) && $matches[2] !== ''
-    ? (int) $matches[2]
-    : null;
-
-$allowedFields = $resources[$table];
-
-// 7. GET all records or POST a new record
-if ($id === null) {
-
-    // GET all anime: filters, categories, sorting and cursor pagination
-    // (see app/Services/AnimeListService.php). Cursors are sent back in headers so the
-    // response body stays a plain JSON array, the same as before.
-    if ($method === 'GET' && $table === 'anime') {
-        require_once __DIR__ . '/app/Services/AnimeListService.php';
-        $animeFilters = require __DIR__ . '/app/config/anime-filters.php';
-
-        try {
-            $result = (new App\Services\AnimeListService($pdo, $animeFilters))->list($_GET);
-        } catch (InvalidArgumentException $e) {
-            http_response_code(400);
-            echo json_encode(["error" => $e->getMessage()]);
-            exit;
-        }
-
-        header('Access-Control-Expose-Headers: X-Next-Cursor, X-Prev-Cursor');
-        if ($result['next'] !== null) {
-            header('X-Next-Cursor: ' . $result['next']);
-        }
-        if ($result['prev'] !== null) {
-            header('X-Prev-Cursor: ' . $result['prev']);
-        }
-
-        http_response_code(200);
-        echo json_encode($result['records']);
-        exit;
-    }
-
-    // GET all records
-    if ($method === 'GET') {
-        $page = filter_var(
-            $_GET['page'] ?? '1',
-            FILTER_VALIDATE_INT,
-            ['options' => ['min_range' => 1, 'max_range' => 1000000]]
-        );
-
-        if ($page === false) {
-            http_response_code(400);
-            echo json_encode([
-                "error" => "The page parameter must be an integer between 1 and 1000000"
-            ]);
-            exit;
-        }
-
-        $itemsPerPage = 20;
-        $offset = ($page - 1) * $itemsPerPage;
-
-        $stmt = $pdo->prepare(
-            "SELECT * FROM public.$table
-             ORDER BY id ASC
-             LIMIT :limit OFFSET :offset"
-        );
-        $stmt->bindValue(':limit', $itemsPerPage, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-        $records = $stmt->fetchAll();
-
-        http_response_code(200);
-        echo json_encode($records);
-        exit;
-    }
-
-    // POST a new record
-    if ($method === 'POST') {
-
-        $rawJson = file_get_contents('php://input');
-        $input = json_decode($rawJson, true);
-
-        // Validate JSON object
-        if (
-            json_last_error() !== JSON_ERROR_NONE ||
-            !is_array($input) ||
-            array_is_list($input)
-        ) {
-            http_response_code(400);
-            echo json_encode(["error" => "Invalid JSON object"]);
-            exit;
-        }
-
-        // Title is required
-        if($table!='user')
-            {
-        if (
-            !isset($input['title']) ||
-            !is_string($input['title']) ||
-            trim($input['title']) === ''
-        ) {
-            http_response_code(400);
-            echo json_encode([
-                "error" => "A non-empty title is required"
-            ]);
-            exit;
-        }
-            }
-
-        // Reject unknown fields
-        $unknownFields = array_diff(
-            array_keys($input),
-            $allowedFields
-        );
-
-        if (!empty($unknownFields)) {
-            http_response_code(400);
-            echo json_encode(["error" => "Unknown field provided"]);
-            exit;
-        }
-
-        // Build the INSERT query using supplied fields only
-        $fields = array_keys($input);
-        $columns = implode(', ', $fields);
-        $placeholders = implode(
-            ', ',
-            array_map(fn($field) => ":$field", $fields)
-        );
-
-        $sql = "INSERT INTO public.$table ($columns)
-                VALUES ($placeholders)
-                RETURNING *";
-
-        $stmt = $pdo->prepare($sql);
-
-        foreach ($input as $field => $value) {
-            $stmt->bindValue(":$field", $value);
-        }
-
-        $stmt->execute();
-
-        // Return the newly created record
-        // $newId = (int) $pdo->lastInsertId();
-
-        // $stmt = $pdo->prepare(
-        //     "SELECT * FROM public.$table WHERE id = :id"
-        // );
-        // $stmt->execute([':id' => $newId]);
-
-        http_response_code(201);
-        echo json_encode($stmt->fetch());
-        exit;
-    }
-
-    http_response_code(405);
-    header("Allow: GET, POST, OPTIONS");
-    echo json_encode(["error" => "Method not allowed"]);
-    exit;
-}
-
-// 8. GET, PUT, PATCH, or DELETE one record
-$stmt = $pdo->prepare(
-    "SELECT * FROM public.$table WHERE id = :id"
+    [$controller, 'handle']
 );
-$stmt->execute([':id' => $id]);
-$record = $stmt->fetch();
 
-// GET one record
-if ($method === 'GET') {
-    if (!$record) {
-        http_response_code(404);
-        echo json_encode(["error" => "Record not found"]);
-        exit;
-    }
-
-    http_response_code(200);
-    echo json_encode($record);
-    exit;
+try {
+    $response = $pipeline->handle($request);
+} catch (Throwable $e) {
+    // Last resort: only reached if a middleware outside ErrorHandler itself fails
+    $logger->error($request->requestId, $e::class . ': ' . $e->getMessage() . ' in ' . basename($e->getFile()) . ':' . $e->getLine());
+    $request->format = 'json';
+    $request->mediaType = 'application/json';
+    $response = ApiResponse::error(500, 'Internal server error', $request->requestId);
 }
 
-// Check whether the record exists for modification
-if (!$record) {
-    http_response_code(404);
-    echo json_encode(["error" => "Record not found"]);
-    exit;
-}
-
-// DELETE one record
-if ($method === 'DELETE') {
-    $stmt = $pdo->prepare(
-        "DELETE FROM public.$table WHERE id = :id"
-    );
-    $stmt->execute([':id' => $id]);
-
-    http_response_code(200);
-    echo json_encode(["message" => "Record deleted successfully"]);
-    exit;
-}
-
-// PUT or PATCH an existing record
-if ($method === 'PUT' || $method === 'PATCH') {
-
-    $rawJson = file_get_contents('php://input');
-    $input = json_decode($rawJson, true);
-
-    if (
-        json_last_error() !== JSON_ERROR_NONE ||
-        !is_array($input) ||
-        array_is_list($input)
-    ) {
-        http_response_code(400);
-        echo json_encode(["error" => "Invalid JSON object"]);
-        exit;
-    }
-
-    // Reject unknown fields
-    $unknownFields = array_diff(
-        array_keys($input),
-        $allowedFields
-    );
-
-    if (!empty($unknownFields)) {
-        http_response_code(400);
-        echo json_encode(["error" => "Unknown field provided"]);
-        exit;
-    }
-
-    // PUT replaces the supplied resource fields and requires a title.
-    if ($method === 'PUT') {
-        if (
-            !isset($input['title']) ||
-            !is_string($input['title']) ||
-            trim($input['title']) === ''
-        ) {
-            http_response_code(400);
-            echo json_encode([
-                "error" => "A non-empty title is required"
-            ]);
-            exit;
-        }
-
-        // Missing allowed fields become NULL on replacement.
-        foreach ($allowedFields as $field) {
-            if (!array_key_exists($field, $input)) {
-                $input[$field] = null;
-            }
-        }
-    }
-
-    if (empty($input)) {
-        http_response_code(400);
-        echo json_encode(["error" => "No fields provided"]);
-        exit;
-    }
-
-    // Validate title whenever it is supplied
-    if (
-        array_key_exists('title', $input) &&
-        (!is_string($input['title']) ||
-         trim($input['title']) === '')
-    ) {
-        http_response_code(400);
-        echo json_encode([
-            "error" => "Title cannot be empty"
-        ]);
-        exit;
-    }
-
-    // Build the UPDATE query
-    $setParts = [];
-
-    foreach (array_keys($input) as $field) {
-        $setParts[] = "`$field` = :$field";
-    }
-
-    $sql = "UPDATE public.$table
-        SET " . implode(', ', $setParts) . "
-        WHERE id = :id";
-
-    $stmt = $pdo->prepare($sql);
-
-    foreach ($input as $field => $value) {
-        $stmt->bindValue(":$field", $value);
-    }
-
-    $stmt->bindValue(':id', $id, PDO::PARAM_INT);
-    $stmt->execute();
-
-    // Return the updated record
-    $stmt = $pdo->prepare(
-        "SELECT * FROM public.$table WHERE id = :id"
-    );
-    $stmt->execute([':id' => $id]);
-
-    http_response_code(200);
-    echo json_encode($stmt->fetch());
-    exit;
-}
-
-// Unsupported method
-http_response_code(405);
-header("Allow: GET, PUT, PATCH, DELETE, OPTIONS");
-echo json_encode(["error" => "Method not allowed"]);
+(new ResponseWriter())->send($request, $response);
 exit;

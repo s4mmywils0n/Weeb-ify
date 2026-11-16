@@ -1,0 +1,2 @@
+# storage/ holds logs and other runtime files. Never serve it to the browser.
+Require all denied

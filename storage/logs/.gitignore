@@ -1,0 +1,3 @@
+# Logs are runtime output, not source code
+*
+!.gitignore

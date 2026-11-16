@@ -10,13 +10,6 @@ $recordId = filter_var(
 );
 $recordId = $recordId === false || $recordId === null ? null : $recordId;
 
-$page = filter_input(
-    INPUT_GET,
-    'page',
-    FILTER_VALIDATE_INT,
-    ['options' => ['min_range' => 1, 'max_range' => 1000000]]
-);
-$page = $page === false || $page === null ? 1 : $page;
 $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
     ? trim($_GET['q'])
     : '';
@@ -39,7 +32,9 @@ foreach (['after', 'before'] as $key) {
     $value = $_GET[$key] ?? '';
     $listState[$key] = is_string($value) && preg_match('/\A[A-Za-z0-9_-]{1,300}\z/', $value) ? $value : null;
 }
-$listState['page'] = ($listState['after'] || $listState['before']) && $page > 1 ? $page : null;
+// A typed-in page number (?page=N) is only kept when there is no cursor
+$pageValue = filter_var($_GET['page'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 2]]);
+$listState['page'] = !$listState['after'] && !$listState['before'] && $pageValue !== false ? $pageValue : null;
 // category[0]=..&category[1]=..  ->  category[]=..&category[]=..  (what the anime page reads)
 $returnQuery = preg_replace('/%5B\d+%5D=/', '%5B%5D=', http_build_query(array_filter($listState)));
 $returnUrl = BASE_URL . '/anime' . ($returnQuery !== '' ? '?' . $returnQuery : '');

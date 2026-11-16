@@ -49,6 +49,18 @@ require __DIR__ . '/partials/header.php';
             <p class="page-number" id="page-number" aria-live="polite"></p>
         </div>
 
+        <?php if ($searchQuery !== ''):
+            // "Clear search" keeps the filters, sort and page size; only drops the search text
+            $clearParams = $_GET;
+            unset($clearParams['q'], $clearParams['page'], $clearParams['after'], $clearParams['before']);
+            $clearQuery = preg_replace('/%5B\d+%5D=/', '%5B%5D=', http_build_query($clearParams));
+        ?>
+            <p class="search-summary">
+                <span>Results for <strong>“<?= $e($searchQuery) ?>”</strong></span>
+                <a href="<?= BASE_URL ?>/anime<?= $clearQuery !== '' ? '?' . $e($clearQuery) : '' ?>">Clear search</a>
+            </p>
+        <?php endif; ?>
+
         <!-- Filters, sorting and page size. Changing any of them goes back to the first page. -->
         <form class="filter-bar" id="filter-form" action="<?= BASE_URL ?>/anime" method="get" aria-label="Filter and sort anime">
             <?php if ($searchQuery !== ''): ?>
@@ -115,7 +127,11 @@ require __DIR__ . '/partials/header.php';
 
         <nav class="pagination" aria-label="Anime pages">
             <a id="previous-page" href="#" aria-disabled="true">Previous</a>
-            <span class="page-count" id="page-count"></span>
+            <form class="page-count page-jump" id="page-jump" novalidate hidden>
+                <label for="page-input">Page</label>
+                <input type="number" id="page-input" name="page" min="1" step="1" inputmode="numeric">
+                <span id="page-total"></span>
+            </form>
             <a id="next-page" href="#" aria-disabled="true">Next</a>
         </nav>
     </main>
@@ -125,7 +141,9 @@ require __DIR__ . '/partials/header.php';
         const list = document.getElementById("anime-list");
         const previousLink = document.getElementById("previous-page");
         const nextLink = document.getElementById("next-page");
-        const pageLabel = document.getElementById("page-count");
+        const pageJump = document.getElementById("page-jump");
+        const pageInput = document.getElementById("page-input");
+        const pageTotal = document.getElementById("page-total");
         const pageHeading = document.getElementById("page-number");
 
         // ---- What is being shown: search, filters, sort and page size from the URL ----
@@ -138,19 +156,48 @@ require __DIR__ . '/partials/header.php';
         urlParams.getAll("category[]").forEach(value => listParams.append("category[]", value));
         const hasFilters = ["showtype", "agerating", "category[]"].some(key => listParams.has(key));
 
-        // ---- Where we are: the cursor for this page (from the previous Next/Previous click) ----
-        // "page" is only the number shown to the user; the cursor decides which anime load.
+        // ---- Where we are ----
+        // Next/Previous use a cursor (after/before). A typed-in page number uses ?page=N.
+        // The page number shown always comes from the API (X-Page), so it matches what loaded.
         const after = urlParams.get("after");
         const before = urlParams.get("before");
-        const pageNumber = (after || before) ? Math.max(1, parseInt(urlParams.get("page"), 10) || 1) : 1;
-        pageLabel.textContent = `Page ${pageNumber}`;
-        pageHeading.textContent = `Page ${pageNumber}`;
+        const requestedPage = (after || before) ? null : urlParams.get("page");
+
+        function showPageNumber(page, totalPages) {
+            pageHeading.textContent = page ? `Page ${page}` : "";
+            pageJump.hidden = !page;
+            if (!page) return;
+            pageInput.value = String(page);
+            pageInput.max = String(totalPages || page);
+            pageInput.style.width = `${String(totalPages || page).length + 3}ch`;
+            pageTotal.textContent = totalPages ? `of ${totalPages}` : "";
+        }
+
+        // Typing a page number and pressing Enter (or leaving the box) jumps to that page
+        function jumpToPage() {
+            const page = parseInt(pageInput.value, 10);
+            const max = parseInt(pageInput.max, 10) || 1;
+            if (!Number.isInteger(page) || page < 1) {
+                pageInput.value = pageInput.defaultValue;
+                return;
+            }
+            const target = Math.min(page, max);
+            if (String(target) === pageInput.defaultValue) {
+                pageInput.value = pageInput.defaultValue;
+                return;
+            }
+            window.location.href = listUrl(target > 1 ? { page: target } : {});
+        }
+        pageJump.addEventListener("submit", event => {
+            event.preventDefault();
+            jumpToPage();
+        });
+        pageInput.addEventListener("change", jumpToPage);
 
         // URL of this list at another position: { after: cursor } or { before: cursor }
-        function listUrl(position, page) {
+        function listUrl(position) {
             const params = new URLSearchParams(listParams);
             Object.entries(position).forEach(([key, value]) => params.set(key, value));
-            if (page > 1) params.set("page", String(page));
             return `${BASE_URL}/anime?${params.toString()}`;
         }
 
@@ -206,7 +253,7 @@ require __DIR__ . '/partials/header.php';
                 const params = new URLSearchParams(listParams);
                 if (after) params.set("after", after);
                 if (before) params.set("before", before);
-                if (pageNumber > 1) params.set("page", String(pageNumber));
+                if (requestedPage) params.set("page", requestedPage);
                 const query = params.toString();
                 card.href = `${BASE_URL}/anime/${Number(record.id)}${query ? "?" + query : ""}`;
                 card.setAttribute("aria-label", `View details for ${record.title || "this anime"}`);
@@ -236,9 +283,8 @@ require __DIR__ . '/partials/header.php';
             addText(copy, "h2", "", record.title || "Untitled anime");
 
             const details = [];
-            // Supabase column names have spaces ("show type"); the old names are kept as a fallback
-            const showType = record["show type"] ?? record.showtype;
-            const episodeCount = record["episode count"] ?? record.episodecount;
+            const showType = record.show_type;
+            const episodeCount = record.episode_count;
             if (showType) details.push(showType);
             if (episodeCount !== null && episodeCount !== undefined) {
                 details.push(`${episodeCount} episodes`);
@@ -254,6 +300,7 @@ require __DIR__ . '/partials/header.php';
         const apiParams = new URLSearchParams(listParams);
         if (after) apiParams.set("after", after);
         else if (before) apiParams.set("before", before);
+        else if (requestedPage) apiParams.set("page", requestedPage);
 
         fetch(`${API_URL}/anime?${apiParams.toString()}`, {
             headers: { "Accept": "application/json" }
@@ -270,14 +317,21 @@ require __DIR__ . '/partials/header.php';
                     records: result,
                     next: response.headers.get("X-Next-Cursor"),
                     prev: response.headers.get("X-Prev-Cursor"),
+                    page: parseInt(response.headers.get("X-Page"), 10) || null,
+                    totalPages: parseInt(response.headers.get("X-Total-Pages"), 10) || null,
                 };
             })
-            .then(({ records, next, prev }) => {
-                setLink(nextLink, next ? listUrl({ after: next }, pageNumber + 1) : null);
-                setLink(previousLink, prev ? listUrl({ before: prev }, pageNumber - 1) : null);
+            .then(({ records, next, prev, page, totalPages }) => {
+                showPageNumber(page, totalPages);
+                if (page) pageInput.defaultValue = String(page);
+                setLink(nextLink, next ? listUrl({ after: next }) : null);
+                setLink(previousLink, prev ? listUrl({ before: prev }) : null);
 
                 if (records.length === 0) {
-                    showMessage(hasFilters ? "No anime match these filters." : "No anime records found yet.");
+                    const searchText = listParams.get("q");
+                    showMessage(searchText
+                        ? `No anime match “${searchText}”${hasFilters ? " with these filters" : ""}.`
+                        : hasFilters ? "No anime match these filters." : "No anime records found yet.");
                     return;
                 }
 

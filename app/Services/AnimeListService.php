@@ -16,12 +16,18 @@ use PDO;
  *   using the sort value + id of the last row on the current page.
  *
  * Query parameters (all optional):
+ *   q=bebop                  title contains this text (case-insensitive, max 100 characters)
  *   showtype=TV  agerating=PG  category[]=Action&category[]=Comedy  sort=title_asc
  *   limit=5|10|20            (default 20)
  *   after=<cursor>           next page   (cursor from the X-Next-Cursor header)
  *   before=<cursor>          previous page (cursor from the X-Prev-Cursor header)
+ *   page=N                   jump straight to page N (used when the user types a page number).
+ *                            This one uses OFFSET, so it is only for jumps; Next/Previous keep
+ *                            using cursors. Numbers past the end go to the last page.
  *
- * list() returns ['records' => [...], 'next' => ?string, 'prev' => ?string]
+ * list() returns ['records' => [...], 'next' => ?string, 'prev' => ?string, 'page' => ?int, 'pages' => int]
+ * 'page' is the page actually shown (worked out from the data, null when a cursor page is empty)
+ * and 'pages' is how many pages there are in total.
  * and throws InvalidArgumentException (-> HTTP 400) for anything not allowed.
  */
 class AnimeListService
@@ -55,6 +61,25 @@ class AnimeListService
         $backwards = $before !== '';
         $orderDir = $backwards ? $this->flip($dir) : $dir;
 
+        // Filters only (no cursor) - used below to count rows
+        $filterWhere = $where;
+        $filterValues = $values;
+
+        $total = $this->count($filterWhere, $filterValues);
+        $pages = max(1, (int) ceil($total / $limit));
+
+        // ?page=N - a typed-in page number (cursors win if both are sent)
+        $jumpPage = null;
+        $pageRaw = $this->string($query, 'page');
+        if ($pageRaw !== '' && $after === '' && $before === '') {
+            $jumpPage = filter_var($pageRaw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if ($jumpPage === false) {
+                throw new InvalidArgumentException('Invalid page. Use a whole number from 1.');
+            }
+            $jumpPage = min($jumpPage, $pages);
+        }
+        $offset = $jumpPage === null ? 0 : ($jumpPage - 1) * $limit;
+
         if ($after !== '' || $before !== '') {
             $cursor = $this->decodeCursor($after !== '' ? $after : $before, $sortKey);
             $op = ($orderDir === 'ASC') ? '>' : '<';
@@ -72,12 +97,13 @@ class AnimeListService
              FROM public.anime
              $whereSql
              ORDER BY $expr $orderDir, id $orderDir
-             LIMIT :limit"
+             LIMIT :limit OFFSET :offset"
         );
         foreach ($values as $placeholder => $value) {
             $stmt->bindValue($placeholder, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
         }
         $stmt->bindValue(':limit', $limit + 1, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
@@ -92,7 +118,7 @@ class AnimeListService
             $hasPrev = $hasMore;
         } else {
             $hasNext = $hasMore;
-            $hasPrev = $after !== '';  // the first page has nothing before it
+            $hasPrev = $after !== '' || $offset > 0;  // the first page has nothing before it
         }
 
         $first = $rows[0] ?? null;
@@ -107,7 +133,45 @@ class AnimeListService
             return $row;
         }, $rows);
 
-        return ['records' => $records, 'next' => $next, 'prev' => $prev];
+        if ($jumpPage !== null) {
+            $page = $jumpPage;
+        } elseif ($first === null) {
+            $page = ($after === '' && $before === '') ? 1 : null;
+        } elseif (!$hasPrev) {
+            $page = 1;
+        } else {
+            $page = intdiv($this->countBefore($first, $expr, $dir, $sort['cast'], $filterWhere, $filterValues), $limit) + 1;
+        }
+
+        return ['records' => $records, 'next' => $next, 'prev' => $prev, 'page' => $page, 'pages' => $pages];
+    }
+
+    // How many rows match the filters
+    private function count(array $where, array $values): int
+    {
+        $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM public.anime $whereSql");
+        foreach ($values as $placeholder => $value) {
+            $stmt->bindValue($placeholder, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->execute();
+        return (int) $stmt->fetchColumn();
+    }
+
+    // How many rows (with the same filters) come before $row in the sort order
+    private function countBefore(array $row, string $expr, string $dir, string $cast, array $where, array $values): int
+    {
+        $op = ($dir === 'ASC') ? '<' : '>';
+        $where[] = "($expr, id) $op (CAST(:first_value AS $cast), :first_id)";
+        $values[':first_value'] = (string) $row['cursor_value'];
+        $values[':first_id'] = (int) $row['id'];
+
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM public.anime WHERE ' . implode(' AND ', $where));
+        foreach ($values as $placeholder => $value) {
+            $stmt->bindValue($placeholder, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $stmt->execute();
+        return (int) $stmt->fetchColumn();
     }
 
     // ?limit=5|10|20
@@ -126,11 +190,22 @@ class AnimeListService
         return $limit;
     }
 
-    // showtype, agerating, category[]  ->  [where clauses, bound values]
+    // q, showtype, agerating, category[]  ->  [where clauses, bound values]
     private function filters(array $query): array
     {
         $where = [];
         $values = [];
+
+        // ?q=  title search (case-insensitive, matches anywhere in the title)
+        $search = $this->string($query, 'q');
+        if ($search !== '') {
+            if (mb_strlen($search) > 100) {
+                throw new InvalidArgumentException('Search text is too long (max 100 characters).');
+            }
+            // "!" is the escape character, so 50% searches for "50%" and not "50 + anything"
+            $where[] = "title ILIKE :q ESCAPE '!'";
+            $values[':q'] = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search) . '%';
+        }
 
         foreach (['showtype', 'agerating'] as $filter) {
             $value = $this->string($query, $filter);

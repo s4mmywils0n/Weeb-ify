@@ -25,6 +25,9 @@ $extraHead         ??= '';
 
 $e = fn(string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
 $current = fn(string $item): string => $active === $item ? ' aria-current="page"' : '';
+$loggedIn = currentUserId() !== null;
+// Live anime suggestions only when the search goes to the anime list (not manga / favorites)
+$animeSearch = $searchAction === BASE_URL . '/anime';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -35,6 +38,9 @@ $current = fn(string $item): string => $active === $item ? ' aria-current="page"
     <title><?= $e($title) ?></title>
     <?= $extraHead ?>
     <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/site-chrome.css">
+    <?php if ($animeSearch): ?>
+    <script src="<?= BASE_URL ?>/assets/js/header-search.js" defer></script>
+    <?php endif; ?>
 </head>
 <body>
     <header class="site-header">
@@ -48,7 +54,10 @@ $current = fn(string $item): string => $active === $item ? ' aria-current="page"
             <a href="<?= BASE_URL ?>/favorites"<?= $current('favorites') ?>>Favorites</a>
         </nav>
 
-        <form class="header-search" role="search" action="<?= $e($searchAction) ?>" method="get">
+        <form class="header-search" role="search" action="<?= $e($searchAction) ?>" method="get"<?php if ($animeSearch): ?>
+              data-suggest-url="<?= $e(API_URL . '/anime') ?>"
+              data-results-url="<?= $e(BASE_URL . '/anime') ?>"
+              data-detail-url="<?= $e(BASE_URL . '/anime') ?>"<?php endif; ?>>
             <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none">
                 <circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8" />
                 <path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
@@ -56,5 +65,15 @@ $current = fn(string $item): string => $active === $item ? ' aria-current="page"
             <input type="search" name="q" value="<?= $e($searchQuery) ?>" placeholder="<?= $e($searchPlaceholder) ?>" aria-label="<?= $e($searchPlaceholder) ?>">
         </form>
 
-        <a class="login-link" href="<?= BASE_URL ?>/login">Log in</a>
+        <div class="header-auth">
+            <?php if ($loggedIn): ?>
+                <!-- POST (not a link) so a prefetch or another site can't log you out -->
+                <form action="<?= BASE_URL ?>/logout" method="post">
+                    <button type="submit" class="login-link">Log out</button>
+                </form>
+            <?php else: ?>
+                <a class="login-link login-link-secondary" href="<?= BASE_URL ?>/login"<?= $current('login') ?>>Log in</a>
+                <a class="login-link" href="<?= BASE_URL ?>/register"<?= $current('register') ?>>Sign up</a>
+            <?php endif; ?>
+        </div>
     </header>
