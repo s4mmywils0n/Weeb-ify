@@ -6,25 +6,26 @@ class Router
 {
     private array $routes = [];
     /**
-     * Register a Get route.
+     * Register a GET route.
+     * $middleware: classes to run first, in order, e.g. [AuthMiddleware::class]
      */
-     public function get(string $path, callable|array$handler): void
-     {
-        $this->add('GET', $path, $handler);
-     }
-
-     /**
-     * Register a POST route.
-     */
-    public function post(string $path, callable|array $handler): void
+    public function get(string $path, callable|array $handler, array $middleware = []): void
     {
-        $this->add('POST', $path, $handler);
+        $this->add('GET', $path, $handler, $middleware);
     }
 
     /**
-     * Store the route with its HTTP method and converted regex pattern.
+     * Register a POST route.
      */
-    private function add(string $method, string $path, callable|array $handler): void
+    public function post(string $path, callable|array $handler, array $middleware = []): void
+    {
+        $this->add('POST', $path, $handler, $middleware);
+    }
+
+    /**
+     * Store the route with its HTTP method, converted regex pattern and middleware.
+     */
+    private function add(string $method, string $path, callable|array $handler, array $middleware = []): void
     {
         // Convert {param} placeholders into named regex capture groups
         $pattern = preg_replace('/\{([a-zA-Z0-9_]+)\}/', '(?P<$1>[^/]+)', $path);
@@ -34,6 +35,7 @@ class Router
             'method'  => $method,
             'pattern' => $pattern,
             'handler' => $handler,
+            'middleware' => $middleware,
         ];
     }
 
@@ -50,6 +52,12 @@ class Router
             if ($route['method'] === strtoupper($method) && preg_match($route['pattern'], $path, $matches)) {
                 // Filter out numeric regex keys, keeping only named route parameters
                 $params = array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY);
+
+                // Run the route's middleware first. One that fails redirects and exits,
+                // so the handler below never runs.
+                foreach ($route['middleware'] as $middlewareClass) {
+                    (new $middlewareClass())->handle($params);
+                }
 
                 return $this->executeHandler($route['handler'], $params);
             }

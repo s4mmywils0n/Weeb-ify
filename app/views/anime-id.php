@@ -1,7 +1,10 @@
 <?php
-$recordId = filter_input(
-    INPUT_GET,
-    'id',
+// Only reachable through public/index.php (the router)
+if (!defined('BASE_URL')) { http_response_code(404); exit; }
+
+// $id comes from the route /anime/{id} (see public/index.php)
+$recordId = filter_var(
+    $id ?? null,
     FILTER_VALIDATE_INT,
     ['options' => ['min_range' => 1]]
 );
@@ -18,48 +21,41 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
     ? trim($_GET['q'])
     : '';
 
-$returnUrl = 'anime.php?' . http_build_query(array_filter([
-    'page' => $page,
-    'q' => $searchQuery !== '' ? $searchQuery : null,
-]));
+// "Back to anime" returns to the same page: search, filters, categories, sort, page size and cursor
+$animeFilters = require dirname(__DIR__) . '/config/anime-filters.php';
+$listState = ['q' => $searchQuery !== '' ? $searchQuery : null];
+foreach (['showtype', 'agerating', 'sort'] as $key) {
+    $choices = $key === 'sort' ? $animeFilters['sort'] : $animeFilters[$key]['options'];
+    $value = $_GET[$key] ?? '';
+    $listState[$key] = is_string($value) && array_key_exists($value, $choices) ? $value : null;
+}
+$limitValue = filter_var($_GET['limit'] ?? null, FILTER_VALIDATE_INT);
+$listState['limit'] = in_array($limitValue, $animeFilters['limit']['options'], true) ? $limitValue : null;
+$rawCategories = $_GET['category'] ?? [];
+$rawCategories = array_filter(is_array($rawCategories) ? $rawCategories : [$rawCategories], 'is_string');
+$listState['category'] = array_values(array_intersect($animeFilters['category']['options'], $rawCategories)) ?: null;
+// Cursors are opaque (the API checks them); only allow their URL-safe characters here
+foreach (['after', 'before'] as $key) {
+    $value = $_GET[$key] ?? '';
+    $listState[$key] = is_string($value) && preg_match('/\A[A-Za-z0-9_-]{1,300}\z/', $value) ? $value : null;
+}
+$listState['page'] = ($listState['after'] || $listState['before']) && $page > 1 ? $page : null;
+// category[0]=..&category[1]=..  ->  category[]=..&category[]=..  (what the anime page reads)
+$returnQuery = preg_replace('/%5B\d+%5D=/', '%5B%5D=', http_build_query(array_filter($listState)));
+$returnUrl = BASE_URL . '/anime' . ($returnQuery !== '' ? '?' . $returnQuery : '');
 
-$envPath = dirname(__DIR__) . '/.env';
+$envPath = dirname(__DIR__, 2) . '/.env';
 $env = is_file($envPath)
     ? (parse_ini_file($envPath, false, INI_SCANNER_RAW) ?: [])
     : [];
 $supabaseUrl = rtrim((string) ($env['VITE_SUPABASE_URL'] ?? ''), '/');
 $supabaseKey = (string) ($env['VITE_SUPABASE_PUBLISHABLE_KEY'] ?? '');
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#171421">
-    <title>Anime details — Weebi:fy</title>
-   
-    <link rel="stylesheet" href="site-chrome.css">
-</head>
-<body>
-    <header class="site-header">
-        <a class="brand" href="home.php" aria-label="Weebi:fy home">Weebi<span>:fy</span></a>
-
-        <nav class="primary-nav" aria-label="Main navigation">
-            <a href="anime.php" aria-current="page">Anime</a>
-            <a href="manga.php">Manga</a>
-            <a href="products.php">Products</a>
-        </nav>
-
-        <form class="header-search" role="search" action="" method="get">
-            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none">
-                <circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8" />
-                <path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-            </svg>
-            <input type="search" name="q" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>" placeholder="Search your collection" aria-label="Search your collection">
-        </form>
-
-        <a class="login-link" href="../app/src/Login">Log in</a>
-    </header>
+<?php
+$title = 'Anime details — Weebi:fy';
+$active = 'anime';
+require __DIR__ . '/partials/header.php';
+?>
 
     <main>
         <a class="back-link" href="<?= htmlspecialchars($returnUrl, ENT_QUOTES, 'UTF-8') ?>">← Back to anime</a>
@@ -77,16 +73,8 @@ $supabaseKey = (string) ($env['VITE_SUPABASE_PUBLISHABLE_KEY'] ?? '');
             <p class="status-message">Loading anime details…</p>
         </section>
     </main>
-    <footer class="site-footer">
-        <p>Weebi:fy — Your collection, your way.</p>
-        <nav class="footer-nav" aria-label="Footer navigation">
-            <a href="anime.php">Anime</a>
-            <a href="manga.php">Manga</a>
-            <a href="products.php">Products</a>
-        </nav>
-    </footer>
-
     <script>
+        const API_URL = <?= json_encode(API_URL) ?>;
         const recordId = <?= $recordId === null ? 'null' : (int) $recordId ?>;
         const supabaseUrl = <?= json_encode($supabaseUrl, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
         const supabaseKey = <?= json_encode($supabaseKey, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
@@ -299,7 +287,7 @@ $supabaseKey = (string) ($env['VITE_SUPABASE_PUBLISHABLE_KEY'] ?? '');
         if (!recordId) {
             showError("No valid anime ID was provided.");
         } else {
-            fetch(`../api.php/anime/${recordId}`, {
+            fetch(`${API_URL}/anime/${recordId}`, {
                 headers: { "Accept": "application/json" }
             })
                 .then(async response => {
@@ -313,5 +301,4 @@ $supabaseKey = (string) ($env['VITE_SUPABASE_PUBLISHABLE_KEY'] ?? '');
                 .catch(error => showError(error.message));
         }
     </script>
-</body>
-</html>
+<?php require __DIR__ . '/partials/footer.php'; ?>

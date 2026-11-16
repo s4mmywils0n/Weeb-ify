@@ -1,45 +1,44 @@
 <?php
-$page = filter_input(
-    INPUT_GET,
-    'page',
-    FILTER_VALIDATE_INT,
-    ['options' => ['min_range' => 1, 'max_range' => 1000000]]
-);
-$page = $page === false || $page === null ? 1 : $page;
+// Only reachable through public/index.php (the router)
+if (!defined('BASE_URL')) { http_response_code(404); exit; }
+
 $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
     ? trim($_GET['q'])
     : '';
+
+// Filter, sort and page-size options (shared with api.php). Unknown values are ignored here;
+// the API is what actually enforces them.
+$animeFilters = require dirname(__DIR__) . '/config/anime-filters.php';
+
+$selected = [];
+foreach (['showtype', 'agerating'] as $key) {
+    $value = $_GET[$key] ?? '';
+    $selected[$key] = is_string($value) && array_key_exists($value, $animeFilters[$key]['options']) ? $value : '';
+}
+
+$sortValue = $_GET['sort'] ?? '';
+$selected['sort'] = is_string($sortValue) && $sortValue !== 'default' && isset($animeFilters['sort'][$sortValue])
+    ? $sortValue
+    : '';
+
+$limitValue = filter_var($_GET['limit'] ?? null, FILTER_VALIDATE_INT);
+$selected['limit'] = in_array($limitValue, $animeFilters['limit']['options'], true)
+    ? $limitValue
+    : $animeFilters['limit']['default'];
+
+$rawCategories = $_GET['category'] ?? [];
+$rawCategories = array_filter(is_array($rawCategories) ? $rawCategories : [$rawCategories], 'is_string');
+$selected['category'] = array_values(array_intersect($animeFilters['category']['options'], $rawCategories));
+
+$hasFilters = $selected['showtype'] !== '' || $selected['agerating'] !== '' || $selected['category'] !== [];
+$hasChanges = $hasFilters || $selected['sort'] !== '' || $selected['limit'] !== $animeFilters['limit']['default'];
+
+$e = fn(string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
+
+$title = 'Anime — Weebi:fy';
+$active = 'anime';
+require __DIR__ . '/partials/header.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#171421">
-    <title>Anime — Weebi:fy</title>
-   
-    <link rel="stylesheet" href="site-chrome.css">
-</head>
-<body>
-    <header class="site-header">
-        <a class="brand" href="home.php" aria-label="Weebi:fy home">Weebi<span>:fy</span></a>
-
-        <nav class="primary-nav" aria-label="Main navigation">
-            <a href="anime.php" aria-current="page">Anime</a>
-            <a href="manga.php">Manga</a>
-            <a href="products.php">Products</a>
-        </nav>
-
-        <form class="header-search" role="search" action="" method="get">
-            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none">
-                <circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8" />
-                <path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-            </svg>
-            <input type="search" name="q" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>" placeholder="Search your collection" aria-label="Search your collection">
-        </form>
-
-        <a class="login-link" href="../app/src/Login">Log in</a>
-    </header>
 
     <main>
         <div class="page-heading">
@@ -47,42 +46,144 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
                 <span class="eyebrow">Your collection</span>
                 <h1>Anime <span>favorites.</span></h1>
             </div>
-            <p class="page-number" id="page-number" aria-live="polite">Page <?= (int) $page ?></p>
+            <p class="page-number" id="page-number" aria-live="polite"></p>
         </div>
+
+        <!-- Filters, sorting and page size. Changing any of them goes back to the first page. -->
+        <form class="filter-bar" id="filter-form" action="<?= BASE_URL ?>/anime" method="get" aria-label="Filter and sort anime">
+            <?php if ($searchQuery !== ''): ?>
+                <input type="hidden" name="q" value="<?= $e($searchQuery) ?>">
+            <?php endif; ?>
+
+            <div class="filter-row">
+                <?php foreach (['showtype', 'agerating'] as $filter): ?>
+                    <label class="filter-field">
+                        <span><?= $e($animeFilters[$filter]['label']) ?></span>
+                        <select name="<?= $filter ?>">
+                            <option value="">All</option>
+                            <?php foreach ($animeFilters[$filter]['options'] as $value => $label): ?>
+                                <option value="<?= $e($value) ?>"<?= $selected[$filter] === $value ? ' selected' : '' ?>><?= $e($label) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                <?php endforeach; ?>
+
+                <label class="filter-field">
+                    <span>Sort by</span>
+                    <select name="sort">
+                        <option value="">Default</option>
+                        <?php foreach ($animeFilters['sort'] as $value => $option): ?>
+                            <?php if ($value === 'default') continue; ?>
+                            <option value="<?= $e($value) ?>"<?= $selected['sort'] === $value ? ' selected' : '' ?>><?= $e($option['label']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+
+                <label class="filter-field filter-field-small">
+                    <span>Per page</span>
+                    <select name="limit">
+                        <?php foreach ($animeFilters['limit']['options'] as $option): ?>
+                            <option value="<?= (int) $option ?>"<?= $selected['limit'] === $option ? ' selected' : '' ?>><?= (int) $option ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+
+                <div class="filter-actions">
+                    <button type="submit" class="filter-apply">Apply</button>
+                    <?php if ($hasChanges): ?>
+                        <a class="filter-clear" href="<?= BASE_URL ?>/anime<?= $searchQuery !== '' ? '?q=' . $e(rawurlencode($searchQuery)) : '' ?>">Clear</a>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <fieldset class="category-filter">
+                <legend><?= $e($animeFilters['category']['label']) ?> <small>(anime must have every one you tick)</small></legend>
+                <div class="category-options">
+                    <?php foreach ($animeFilters['category']['options'] as $category): ?>
+                        <label class="category-chip">
+                            <input type="checkbox" name="category[]" value="<?= $e($category) ?>"<?= in_array($category, $selected['category'], true) ? ' checked' : '' ?>>
+                            <span><?= $e($category) ?></span>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+            </fieldset>
+        </form>
 
         <section class="record-grid" id="anime-list" aria-label="Anime records" aria-live="polite">
             <p class="status-message">Loading anime…</p>
         </section>
 
         <nav class="pagination" aria-label="Anime pages">
-            <a id="previous-page" href="#">Previous</a>
-            <span class="page-count" id="page-count">Page <?= (int) $page ?></span>
-            <button id="next-page" type="button" disabled>Next</button>
+            <a id="previous-page" href="#" aria-disabled="true">Previous</a>
+            <span class="page-count" id="page-count"></span>
+            <a id="next-page" href="#" aria-disabled="true">Next</a>
         </nav>
     </main>
-    <footer class="site-footer">
-        <p>Weebi:fy — Your collection, your way.</p>
-        <nav class="footer-nav" aria-label="Footer navigation">
-            <a href="anime.php">Anime</a>
-            <a href="manga.php">Manga</a>
-            <a href="products.php">Products</a>
-        </nav>
-    </footer>
-
     <script>
-        const currentPage = <?= (int) $page ?>;
-        const itemsPerPage = 20;
+        const BASE_URL = <?= json_encode(BASE_URL) ?>;
+        const API_URL = <?= json_encode(API_URL) ?>;
         const list = document.getElementById("anime-list");
         const previousLink = document.getElementById("previous-page");
-        const nextButton = document.getElementById("next-page");
+        const nextLink = document.getElementById("next-page");
         const pageLabel = document.getElementById("page-count");
+        const pageHeading = document.getElementById("page-number");
 
-        function pageUrl(page) {
-            const params = new URLSearchParams(window.location.search);
-            params.set("page", String(page));
-            return `anime.php?${params.toString()}`;
+        // ---- What is being shown: search, filters, sort and page size from the URL ----
+        const urlParams = new URLSearchParams(window.location.search);
+        const listParams = new URLSearchParams();
+        ["q", "showtype", "agerating", "sort", "limit"].forEach(key => {
+            const value = urlParams.get(key);
+            if (value) listParams.set(key, value);
+        });
+        urlParams.getAll("category[]").forEach(value => listParams.append("category[]", value));
+        const hasFilters = ["showtype", "agerating", "category[]"].some(key => listParams.has(key));
+
+        // ---- Where we are: the cursor for this page (from the previous Next/Previous click) ----
+        // "page" is only the number shown to the user; the cursor decides which anime load.
+        const after = urlParams.get("after");
+        const before = urlParams.get("before");
+        const pageNumber = (after || before) ? Math.max(1, parseInt(urlParams.get("page"), 10) || 1) : 1;
+        pageLabel.textContent = `Page ${pageNumber}`;
+        pageHeading.textContent = `Page ${pageNumber}`;
+
+        // URL of this list at another position: { after: cursor } or { before: cursor }
+        function listUrl(position, page) {
+            const params = new URLSearchParams(listParams);
+            Object.entries(position).forEach(([key, value]) => params.set(key, value));
+            if (page > 1) params.set("page", String(page));
+            return `${BASE_URL}/anime?${params.toString()}`;
         }
 
+        function setLink(link, url) {
+            link.href = url || "#";
+            link.setAttribute("aria-disabled", url ? "false" : "true");
+        }
+
+        // ---- Filter form: apply straight away; empty choices are left out of the URL ----
+        const filterForm = document.getElementById("filter-form");
+        function submitFilters() {
+            filterForm.querySelectorAll("select, input[type=hidden]").forEach(field => {
+                field.disabled = field.value === "";
+            });
+            filterForm.submit();
+        }
+        filterForm.addEventListener("submit", event => {
+            event.preventDefault();
+            submitFilters();
+        });
+        filterForm.querySelectorAll("select").forEach(select => {
+            select.addEventListener("change", submitFilters);
+        });
+        // Short pause after ticking a category, so several can be ticked before the page reloads
+        let categoryTimer = null;
+        filterForm.querySelectorAll("input[type=checkbox]").forEach(box => {
+            box.addEventListener("change", () => {
+                clearTimeout(categoryTimer);
+                categoryTimer = setTimeout(submitFilters, 700);
+            });
+        });
+
+        // ---- Cards ----
         function addText(parent, tagName, className, text) {
             const element = document.createElement(tagName);
             if (className) element.className = className;
@@ -101,12 +202,13 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
             const card = document.createElement(hasValidId ? "a" : "article");
             card.className = "anime-card";
             if (hasValidId) {
-                const params = new URLSearchParams();
-                params.set("id", String(Number(record.id)));
-                params.set("page", String(currentPage));
-                const search = new URLSearchParams(window.location.search).get("q");
-                if (search) params.set("q", search);
-                card.href = `anime-id.php?${params.toString()}`;
+                // Keep the list position so "Back to anime" returns to this exact page
+                const params = new URLSearchParams(listParams);
+                if (after) params.set("after", after);
+                if (before) params.set("before", before);
+                if (pageNumber > 1) params.set("page", String(pageNumber));
+                const query = params.toString();
+                card.href = `${BASE_URL}/anime/${Number(record.id)}${query ? "?" + query : ""}`;
                 card.setAttribute("aria-label", `View details for ${record.title || "this anime"}`);
             }
 
@@ -134,9 +236,12 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
             addText(copy, "h2", "", record.title || "Untitled anime");
 
             const details = [];
-            if (record.showtype) details.push(record.showtype);
-            if (record.episodecount !== null && record.episodecount !== undefined) {
-                details.push(`${record.episodecount} episodes`);
+            // Supabase column names have spaces ("show type"); the old names are kept as a fallback
+            const showType = record["show type"] ?? record.showtype;
+            const episodeCount = record["episode count"] ?? record.episodecount;
+            if (showType) details.push(showType);
+            if (episodeCount !== null && episodeCount !== undefined) {
+                details.push(`${episodeCount} episodes`);
             }
             if (record.status) details.push(record.status);
             addText(copy, "p", "card-meta", details.join(" · ") || "Anime entry");
@@ -145,14 +250,12 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
             list.appendChild(card);
         }
 
-        previousLink.href = currentPage > 1 ? pageUrl(currentPage - 1) : "#";
-        previousLink.setAttribute("aria-disabled", currentPage > 1 ? "false" : "true");
-        if (currentPage <= 1) {
-            previousLink.style.pointerEvents = "none";
-            previousLink.style.opacity = ".4";
-        }
+        // ---- Load this page from the API ----
+        const apiParams = new URLSearchParams(listParams);
+        if (after) apiParams.set("after", after);
+        else if (before) apiParams.set("before", before);
 
-        fetch(`../api.php/anime?page=${currentPage}`, {
+        fetch(`${API_URL}/anime?${apiParams.toString()}`, {
             headers: { "Accept": "application/json" }
         })
             .then(async response => {
@@ -163,22 +266,24 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
                 if (!Array.isArray(result)) {
                     throw new Error("The API returned an unexpected response.");
                 }
-                return result;
+                return {
+                    records: result,
+                    next: response.headers.get("X-Next-Cursor"),
+                    prev: response.headers.get("X-Prev-Cursor"),
+                };
             })
-            .then(records => {
+            .then(({ records, next, prev }) => {
+                setLink(nextLink, next ? listUrl({ after: next }, pageNumber + 1) : null);
+                setLink(previousLink, prev ? listUrl({ before: prev }, pageNumber - 1) : null);
+
                 if (records.length === 0) {
-                    showMessage(currentPage === 1 ? "No anime records found yet." : "No anime on this page.");
+                    showMessage(hasFilters ? "No anime match these filters." : "No anime records found yet.");
                     return;
                 }
 
                 list.replaceChildren();
                 records.forEach(renderRecord);
-                nextButton.disabled = records.length < itemsPerPage;
-                nextButton.addEventListener("click", () => {
-                    window.location.href = pageUrl(currentPage + 1);
-                });
             })
             .catch(error => showMessage(`Could not load anime: ${error.message}`));
     </script>
-</body>
-</html>
+<?php require __DIR__ . '/partials/footer.php'; ?>

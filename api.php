@@ -20,7 +20,10 @@ $dsn = "pgsql:host=$host;port=$port;dbname=$database";
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES => false,
+    // true = PHP prepares the queries itself. Supabase's connection pooler can run a query on a
+    // different connection than the one it was prepared on, which randomly fails with
+    // 'prepared statement "pdo_stmt_..." does not exist'. Values are still escaped safely.
+    PDO::ATTR_EMULATE_PREPARES => true,
 ];
 
 
@@ -110,6 +113,34 @@ $allowedFields = $resources[$table];
 
 // 7. GET all records or POST a new record
 if ($id === null) {
+
+    // GET all anime: filters, categories, sorting and cursor pagination
+    // (see app/Services/AnimeListService.php). Cursors are sent back in headers so the
+    // response body stays a plain JSON array, the same as before.
+    if ($method === 'GET' && $table === 'anime') {
+        require_once __DIR__ . '/app/Services/AnimeListService.php';
+        $animeFilters = require __DIR__ . '/app/config/anime-filters.php';
+
+        try {
+            $result = (new App\Services\AnimeListService($pdo, $animeFilters))->list($_GET);
+        } catch (InvalidArgumentException $e) {
+            http_response_code(400);
+            echo json_encode(["error" => $e->getMessage()]);
+            exit;
+        }
+
+        header('Access-Control-Expose-Headers: X-Next-Cursor, X-Prev-Cursor');
+        if ($result['next'] !== null) {
+            header('X-Next-Cursor: ' . $result['next']);
+        }
+        if ($result['prev'] !== null) {
+            header('X-Prev-Cursor: ' . $result['prev']);
+        }
+
+        http_response_code(200);
+        echo json_encode($result['records']);
+        exit;
+    }
 
     // GET all records
     if ($method === 'GET') {

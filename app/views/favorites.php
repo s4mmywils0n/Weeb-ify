@@ -1,7 +1,17 @@
 <?php
-$userId = 1;
+// Only reachable through public/index.php (the router)
+if (!defined('BASE_URL')) { http_response_code(404); exit; }
 
-$envPath = dirname(__DIR__) . '/.env';
+// $user comes from the route /profile/{user}/favorites (see public/index.php).
+// For now it is the numeric user id. TODO: once login exists, check it matches the logged-in user.
+$userId = filter_var($user ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+if ($userId === false || $userId === null) {
+    http_response_code(404);
+    echo '404 Not Found';
+    exit;
+}
+
+$envPath = dirname(__DIR__, 2) . '/.env';
 $env = is_file($envPath)
     ? (parse_ini_file($envPath, false, INI_SCANNER_RAW) ?: [])
     : [];
@@ -16,7 +26,7 @@ if ($supabaseUrl === '' || $supabaseKey === '') {
     $error = 'Supabase API configuration is missing.';
 } else {
     $query = http_build_query([
-        'select'  => '*,anime:anime_id(anime_id,title,image,episodecount,status,showtype,kitsu_url,agerating,popularityrank)',
+        'select'  => '*,anime:anime_id(id,anime_id,title,image,episodecount,status,showtype,kitsu_url,agerating,popularityrank)',
         'user_id' => 'eq.' . $userId,
         'order'   => 'created_at.desc',
     ], '', '&', PHP_QUERY_RFC3986);
@@ -61,13 +71,7 @@ function safeImageUrl($value): string
         : '';
 }
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#171421">
-    <title>Favorites — Weebi:fy</title>
+<?php ob_start(); ?>
     <style>
         :root {
             color-scheme: dark;
@@ -323,32 +327,16 @@ function safeImageUrl($value): string
             .favorites-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
         }
     </style>
-    <link rel="stylesheet" href="site-chrome.css">
-</head>
-<body>
-    <header class="site-header">
-        <a class="brand" href="home.php" aria-label="Weebi:fy home">Weebi<span>:fy</span></a>
-
-        <nav class="primary-nav" aria-label="Main navigation">
-            <a href="anime.php">Anime</a>
-            <a href="manga.php">Manga</a>
-            <a href="products.php">Products</a>
-            <a href="favorites.php" aria-current="page">Favorites</a>
-        </nav>
-
-        <form class="header-search" role="search" action="" method="get">
-            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none">
-                <circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8" />
-                <path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-            </svg>
-            <input type="search" name="q" placeholder="Search favorites" aria-label="Search favorites">
-        </form>
-
-        <a class="login-link" href="../app/src/Login">Log in</a>
-    </header>
+<?php $extraHead = ob_get_clean(); ?>
+<?php
+$title = 'Favorites — Weebi:fy';
+$active = 'favorites';
+$searchPlaceholder = 'Search favorites';
+require __DIR__ . '/partials/header.php';
+?>
 
     <main>
-        <a class="back-link" href="anime.php">← Back to anime</a>
+        <a class="back-link" href="<?= BASE_URL ?>/anime">← Back to anime</a>
         <span class="eyebrow">Your library</span>
         <h1>Favorite <span>anime.</span></h1>
 
@@ -357,7 +345,7 @@ function safeImageUrl($value): string
                 <p class="status-message"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></p>
             <?php elseif (count($favorites) === 0): ?>
                 <p class="status-message">
-                    You haven't favorited any anime yet. Browse the <a href="anime.php" style="color: var(--accent);">anime collection</a> and add some.
+                    You haven't favorited any anime yet. Browse the <a href="<?= BASE_URL ?>/anime" style="color: var(--accent);">anime collection</a> and add some.
                 </p>
             <?php else: ?>
                 <div class="favorites-grid">
@@ -371,7 +359,7 @@ function safeImageUrl($value): string
                         $status = $anime['status'] ?? null;
                         $animeId = $fav['anime_id'] ?? ($anime['anime_id'] ?? '');
                         $meta = array_filter([$showType, $episodeCount ? $episodeCount . ' episodes' : null, $status]);
-                        $detailHref = 'anime-id.php?id=' . urlencode((string)($anime['id'] ?? ''));
+                        $detailHref = BASE_URL . '/anime/' . urlencode((string)($anime['id'] ?? ''));
                         ?>
                         <article class="favorite-card" data-anime-id="<?= htmlspecialchars((string)$animeId, ENT_QUOTES, 'UTF-8') ?>">
                             <a href="<?= htmlspecialchars($detailHref, ENT_QUOTES, 'UTF-8') ?>" class="favorite-poster-link" aria-label="View details for <?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?>">
@@ -401,16 +389,6 @@ function safeImageUrl($value): string
             <?php endif; ?>
         </section>
     </main>
-    <footer class="site-footer">
-        <p>Weebi:fy — Your collection, your way.</p>
-        <nav class="footer-nav" aria-label="Footer navigation">
-            <a href="anime.php">Anime</a>
-            <a href="manga.php">Manga</a>
-            <a href="products.php">Products</a>
-            <a href="favorites.php">Favorites</a>
-        </nav>
-    </footer>
-
     <script>
         document.querySelectorAll('.remove-favorite').forEach(button => {
             button.addEventListener('click', async () => {
@@ -422,7 +400,7 @@ function safeImageUrl($value): string
                 button.textContent = 'Removing…';
 
                 try {
-                    const res = await fetch(`../api.php/favorites/anime/${encodeURIComponent(animeId)}`, {
+                    const res = await fetch(`<?= API_URL ?>/favorites/anime/${encodeURIComponent(animeId)}`, {
                         method: 'DELETE',
                         headers: { 'Accept': 'application/json' },
                     });
@@ -440,7 +418,7 @@ function safeImageUrl($value): string
                             if (grid && grid.children.length === 0) {
                                 const empty = document.createElement('p');
                                 empty.className = 'status-message';
-                                empty.innerHTML = 'You haven\'t favorited any anime yet. Browse the <a href="anime.php" style="color: var(--accent);">anime collection</a> and add some.';
+                                empty.innerHTML = 'You haven\'t favorited any anime yet. Browse the <a href="<?= BASE_URL ?>/anime" style="color: var(--accent);">anime collection</a> and add some.';
                                 grid.replaceWith(empty);
                             }
                         }, 200);
@@ -453,5 +431,4 @@ function safeImageUrl($value): string
             });
         });
     </script>
-</body>
-</html>
+<?php require __DIR__ . '/partials/footer.php'; ?>

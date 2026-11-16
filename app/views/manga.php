@@ -1,4 +1,7 @@
 <?php
+// Only reachable through public/index.php (the router)
+if (!defined('BASE_URL')) { http_response_code(404); exit; }
+
 $page = filter_input(
     INPUT_GET,
     'page',
@@ -10,36 +13,13 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
     ? trim($_GET['q'])
     : '';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#171421">
-    <title>Manga — Weebi:fy</title>
-   
-    <link rel="stylesheet" href="site-chrome.css">
-</head>
-<body>
-    <header class="site-header">
-        <a class="brand" href="home.php" aria-label="Weebi:fy home">Weebi<span>:fy</span></a>
-
-        <nav class="primary-nav" aria-label="Main navigation">
-            <a href="anime.php">Anime</a>
-            <a href="manga.php" aria-current="page">Manga</a>
-            <a href="products.php">Products</a>
-        </nav>
-
-        <form class="header-search" role="search" action="" method="get">
-            <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none">
-                <circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8" />
-                <path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-            </svg>
-            <input type="search" name="q" value="<?= htmlspecialchars($searchQuery, ENT_QUOTES, 'UTF-8') ?>" placeholder="Search manga" aria-label="Search manga">
-        </form>
-
-        <a class="login-link" href="../app/src/Login">Log in</a>
-    </header>
+<?php
+$title = 'Manga — Weebi:fy';
+$active = 'manga';
+$searchAction = BASE_URL . '/manga';
+$searchPlaceholder = 'Search manga';
+require __DIR__ . '/partials/header.php';
+?>
 
     <main>
         <div class="page-heading">
@@ -60,16 +40,9 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
             <button id="next-page" type="button" disabled>Next</button>
         </nav>
     </main>
-    <footer class="site-footer">
-        <p>Weebi:fy — Your collection, your way.</p>
-        <nav class="footer-nav" aria-label="Footer navigation">
-            <a href="anime.php">Anime</a>
-            <a href="manga.php">Manga</a>
-            <a href="products.php">Products</a>
-        </nav>
-    </footer>
-
     <script>
+        const BASE_URL = <?= json_encode(BASE_URL) ?>;
+        const API_URL = <?= json_encode(API_URL) ?>;
         const currentPage = <?= (int) $page ?>;
         const itemsPerPage = 20;
         const list = document.getElementById("manga-list");
@@ -79,7 +52,7 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
         function pageUrl(page) {
             const params = new URLSearchParams(window.location.search);
             params.set("page", String(page));
-            return `manga.php?${params.toString()}`;
+            return `${BASE_URL}/manga?${params.toString()}`;
         }
 
         function addText(parent, tagName, className, text) {
@@ -144,7 +117,7 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
         const searchQuery = new URLSearchParams(window.location.search).get("q");
         if (searchQuery && searchQuery.trim()) searchParams.set("q", searchQuery.trim());
 
-        fetch(`../api.php/manga?${searchParams.toString()}`, {
+        fetch(`${API_URL}/manga?${searchParams.toString()}`, {
             headers: { "Accept": "application/json" }
         })
             .then(async response => {
@@ -176,5 +149,4 @@ $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
             })
             .catch(error => showMessage(`Could not load manga: ${error.message}`));
     </script>
-</body>
-</html>
+<?php require __DIR__ . '/partials/footer.php'; ?>
