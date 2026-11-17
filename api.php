@@ -80,17 +80,16 @@ $resources = [
         'agerating',
         'createdat',
         'enddate',
-        'favorites'=>[
-              'user_id',
-            'anime_id'
-        
-        ],
         'episodecount',
         'popularityrank',
         'showtype',
         'status',
         'kitsu_url'
-    ],
+        ],  
+    'favorites'=>[
+              'user_id',
+            'anime_id' 
+        ],
     'manga' => [
         'title',
         'author',
@@ -103,7 +102,7 @@ $resources = [
 ];
 
 // 6. Match the requested endpoint (filter)
-if (!preg_match('#^/(anime|manga|user)(?:/([0-9]+))?/?$#', $path, $matches)) {
+if (!preg_match('#^/(anime|manga|user|favorites)(?:/([0-9]+))?/?$#', $path, $matches)) {
     http_response_code(404);
     echo json_encode(["error" => "Endpoint not found"]);
     exit;
@@ -115,6 +114,87 @@ $id = isset($matches[2]) && $matches[2] !== ''
     : null;
 
 $allowedFields = $resources[$table];
+
+//========================================================
+//the regular handler would not work for the favorites table since we're doing a joins 
+if($table ==='favorites')
+{
+      if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+}
+
+        $userId = isset($_SESSION['user_id'])  ? (int) $_SESSION['user_id'] : null;
+
+         if ($method === 'GET') {
+        $animeId = filter_var($_GET['anime_id'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        if ($animeId !== false && $animeId !== null) {
+            $stmt = $pdo->prepare(
+                "SELECT anime_id FROM public.favorites
+                 WHERE user_id = :user_id AND anime_id = :anime_id
+                 LIMIT 1"
+            );
+            $stmt->execute([':user_id' => $userId, ':anime_id' => $animeId]);
+            echo json_encode(["isFavorite" => (bool) $stmt->fetch()]);
+            exit;
+        }
+
+        $stmt = $pdo->prepare(
+            "SELECT anime_id FROM public.favorites WHERE user_id = :user_id"
+        );
+        $stmt->execute([':user_id' => $userId]);
+        echo json_encode($stmt->fetchAll());
+        exit;
+    }
+
+     if ($method === 'POST') {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $animeId = filter_var($input['anime_id'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        if ($animeId === false || $animeId === null) {
+            http_response_code(400);
+            echo json_encode(["error" => "A valid anime_id is required"]);
+            exit;
+        }
+
+        $stmt = $pdo->prepare(
+            "INSERT INTO public.favorites (user_id, anime_id)
+             VALUES (:user_id, :anime_id)
+             ON CONFLICT (user_id, anime_id) DO NOTHING"
+        );
+        $stmt->execute([':user_id' => $userId, ':anime_id' => $animeId]);
+
+        http_response_code(201);
+        echo json_encode(["success" => true]);
+        exit;
+    }
+
+     if ($method === 'DELETE') {
+        $animeId = filter_var($_GET['anime_id'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        if ($animeId === false || $animeId === null) {
+            http_response_code(400);
+            echo json_encode(["error" => "A valid anime_id is required"]);
+            exit;
+        }
+
+        $stmt = $pdo->prepare(
+            "DELETE FROM public.favorites
+             WHERE user_id = :user_id AND anime_id = :anime_id"
+        );
+        $stmt->execute([':user_id' => $userId, ':anime_id' => $animeId]);
+
+        echo json_encode(["success" => true]);
+        exit;
+    }
+}
+
 
 // 7. GET all records or POST a new record
 if ($id === null) {
@@ -404,8 +484,6 @@ if ($method === 'PUT' || $method === 'PATCH') {
     exit;
 }
 
-//========================================================
-//
 
 
 // Unsupported method
