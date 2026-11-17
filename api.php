@@ -3,6 +3,11 @@
 
 $envPath = __DIR__ . '/.env';
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+
 if (file_exists($envPath)) {
     $env = parse_ini_file($envPath);
     $host = $env['host'];
@@ -117,19 +122,21 @@ $allowedFields = $resources[$table];
 
 //========================================================
 //the regular handler would not work for the favorites table since we're doing a joins 
-if($table ==='favorites')
-{
-      if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-}
+if ($table === 'favorites') {
+    $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 
-        $userId = isset($_SESSION['user_id'])  ? (int) $_SESSION['user_id'] : null;
+    if ($userId === null) {
+        http_response_code(401);
+        echo json_encode(["error" => "Login required"]);
+        exit;
+    }
 
-         if ($method === 'GET') {
+    if ($method === 'GET') {
         $animeId = filter_var($_GET['anime_id'] ?? null, FILTER_VALIDATE_INT, [
             'options' => ['min_range' => 1],
         ]);
 
+        // Single-anime check (used by the detail-page toggle)
         if ($animeId !== false && $animeId !== null) {
             $stmt = $pdo->prepare(
                 "SELECT anime_id FROM public.favorites
@@ -141,13 +148,23 @@ if($table ==='favorites')
             exit;
         }
 
+        // List with anime details (used by the favorites page)
         $stmt = $pdo->prepare(
-            "SELECT anime_id FROM public.favorites WHERE user_id = :user_id"
+            "SELECT f.anime_id,
+                    a.id, a.title, a.image, a.episode_count,
+                    a.status, a.show_type, a.age_rating, a.popularity_rank
+               FROM public.favorites f
+               JOIN public.anime a ON a.anime_id = f.anime_id
+              WHERE f.user_id = :user_id
+              ORDER BY f.created_at DESC"
         );
         $stmt->execute([':user_id' => $userId]);
         echo json_encode($stmt->fetchAll());
         exit;
     }
+
+    // POST / DELETE unchanged — see previous file
+
 
      if ($method === 'POST') {
         $input = json_decode(file_get_contents('php://input'), true);
@@ -194,7 +211,6 @@ if($table ==='favorites')
         exit;
     }
 }
-
 
 // 7. GET all records or POST a new record
 if ($id === null) {

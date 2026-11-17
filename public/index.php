@@ -104,6 +104,8 @@ $router->get('/manga', fn() => view('manga'));
 
 $router->get('/products', fn() =>view('products'));
 
+$router->post('/logout',[AuthController::class, 'LogOut']);
+
 
 // Middleware (3rd argument) runs first, in order:
 //   AuthMiddleware        - must be logged in (otherwise -> /login, then back here)
@@ -129,7 +131,8 @@ $router->get('/register', fn() => view('register'), [GuestMiddleware::class]);
 // Sign-up form submits here: validate, check username/email, create the user
 $router->post('/register', [AuthController::class, 'register'], [GuestMiddleware::class]);
 
-$router->post('/logout',[AuthController::class, 'LogOut']);
+
+
 
 
 // ---------------------------------------------------------------------------

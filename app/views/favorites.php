@@ -1,144 +1,138 @@
 <?php
-// Only reachable through public/index.php (the router)
 if (!defined('BASE_URL')) { http_response_code(404); exit; }
 
-// $user comes from the route /profile/{user}/favorites (see public/index.php).
-// For now it is the numeric user id. TODO: once login exists, check it matches the logged-in user.
 $userId = filter_var($user ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if ($userId === false || $userId === null) {
     http_response_code(404);
     echo '404 Not Found';
     exit;
 }
-
-$envPath = dirname(__DIR__, 2) . '/.env';
-$env = is_file($envPath)
-    ? (parse_ini_file($envPath, false, INI_SCANNER_RAW) ?: [])
-    : [];
-
-$supabaseUrl = rtrim((string) ($env['url'] ?? ''), '/');
-$supabaseKey = (string) ($env['key'] ?? '');
-
-$favorites = [];
-$error = '';
-
-if ($supabaseUrl === '' || $supabaseKey === '') {
-    $error = 'Supabase API configuration is missing.';
-} else {
-    $query = http_build_query([
-        'select'  => '*,anime:anime_id(id,anime_id,title,image,episodecount,status,showtype,kitsu_url,agerating,popularityrank)',
-        'user_id' => 'eq.' . $userId,
-        'order'   => 'created_at.desc',
-    ], '', '&', PHP_QUERY_RFC3986);
-
-    $headers = [
-        'apikey: ' . $supabaseKey,
-        'Accept: application/json',
-    ];
-
-    $context = stream_context_create([
-        'http' => [
-            'method'        => 'GET',
-            'header'        => implode("\r\n", $headers),
-            'timeout'       => 12,
-            'ignore_errors' => true,
-        ],
-        'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
-    ]);
-
-    $body = @file_get_contents($supabaseUrl . '/rest/v1/favorites?' . $query, false, $context);
-    $status = 0;
-    $responseHeaders = $http_response_header ?? [];
-    if (isset($responseHeaders[0]) && preg_match('/\s(\d{3})\s/', $responseHeaders[0], $m)) {
-        $status = (int) $m[1];
-    }
-
-    if ($body === false) {
-        $error = 'Could not reach Supabase.';
-    } elseif ($status < 200 || $status >= 300) {
-        $decoded = json_decode($body, true);
-        $error = $decoded['message'] ?? 'Could not load favorites.';
-    } else {
-        $decoded = json_decode($body, true);
-        $favorites = is_array($decoded) ? $decoded : [];
-    }
-}
-
-function safeImageUrl($value): string
-{
-    return is_string($value) && preg_match('#^https?://#i', trim($value))
-        ? trim($value)
-        : '';
-}
 ?>
 <?php ob_start(); ?>
-    
 <?php $extraHead = ob_get_clean(); ?>
 <?php
-$title = 'Favorites — Weebi:fy';
-$active = 'favorites';
+$title             = 'Favorites — Weebi:fy';
+$active            = 'favorites';
 $searchPlaceholder = 'Search favorites';
 require __DIR__ . '/partials/header.php';
 ?>
 
-    <main>
-        <a class="back-link" href="<?= BASE_URL ?>/anime">← Back to anime</a>
-        <br>
-        <span class="eyebrow">Your library</span>
-        <h1>Favorite <span>anime.</span></h1>
-        <br>
-        <section id="favorites-content" aria-live="polite">
-            <?php if ($error !== ''): ?>
-                <p class="status-message"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></p>
-            <?php elseif (count($favorites) === 0): ?>
-                <p class="status-message">
-                    You haven't favorited any anime yet. Browse the <a href="<?= BASE_URL ?>/anime" style="color: var(--accent);">anime collection</a> and add some.
-                </p>
-            <?php else: ?>
-                <div class="favorites-grid">
-                    <?php foreach ($favorites as $fav): ?>
-                        <?php
-                        $anime = $fav['anime'] ?? [];
-                        $title = $anime['title'] ?? 'Untitled anime';
-                        $image = safeImageUrl($anime['image'] ?? $fav['image'] ?? '');
-                        $episodeCount = $anime['episodecount'] ?? $fav['episode_count'] ?? null;
-                        $showType = $anime['showtype'] ?? $fav['show_type'] ?? null;
-                        $status = $anime['status'] ?? null;
-                        $animeId = $fav['anime_id'] ?? ($anime['anime_id'] ?? '');
-                        $meta = array_filter([$showType, $episodeCount ? $episodeCount . ' episodes' : null, $status]);
-                        $detailHref = BASE_URL . '/anime/' . urlencode((string)($anime['id'] ?? ''));
-                        ?>
-                        <article class="favorite-card" data-anime-id="<?= htmlspecialchars((string)$animeId, ENT_QUOTES, 'UTF-8') ?>">
-                            <a href="<?= htmlspecialchars($detailHref, ENT_QUOTES, 'UTF-8') ?>" class="favorite-poster-link" aria-label="View details for <?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?>">
-                                <div class="favorite-poster">
-                                    <?php if ($image !== ''): ?>
-                                        <img src="<?= htmlspecialchars($image, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?> poster" loading="lazy">
-                                    <?php else: ?>
-                                        <?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?>
-                                    <?php endif; ?>
-                                </div>
-                            </a>
-                            <div class="favorite-body">
-                                <h2>
-                                    <a href="<?= htmlspecialchars($detailHref, ENT_QUOTES, 'UTF-8') ?>" style="color: inherit; text-decoration: none;">
-                                        <?= htmlspecialchars($title, ENT_QUOTES, 'UTF-8') ?>
-                                    </a>
-                                </h2>
-                                <p><?= htmlspecialchars(implode(' · ', $meta) ?: 'No details', ENT_QUOTES, 'UTF-8') ?></p>
-                                <div class="favorite-actions">
-                                    <a href="<?= htmlspecialchars($detailHref, ENT_QUOTES, 'UTF-8') ?>">View</a>
-                                    <button type="button" class="remove-favorite" data-anime-id="<?= htmlspecialchars((string)$animeId, ENT_QUOTES, 'UTF-8') ?>">Remove</button>
-                                </div>
-                            </div>
-                        </article>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
-        </section>
-    </main>
-    <script>
-        document.querySelectorAll('.remove-favorite').forEach(button => {
+<main>
+    <a class="back-link" href="<?= BASE_URL ?>/">← Back to home</a>
+    <br>
+    <span class="eyebrow">Your library</span>
+    <h1>Favorite <span>anime.</span></h1>
+    <br>
+    <section id="favorites-content" aria-live="polite">
+        <p class="status-message">Loading favorites…</p>
+    </section>
+</main>
+
+<script>
+    const BASE_URL = <?= json_encode(BASE_URL) ?>;
+    const API_URL  = <?= json_encode(API_URL) ?>;
+    const content  = document.getElementById('favorites-content');
+
+    function safeImageUrl(value) {
+        return typeof value === 'string' && /^https?:\/\//i.test(value.trim())
+            ? value.trim()
+            : '';
+    }
+
+    function emptyStateHtml() {
+        return 'You haven\'t favorited any anime yet. Browse the ' +
+            `<a href="${BASE_URL}/anime" style="color: var(--accent);">anime collection</a> and add some.`;
+    }
+
+    function buildCard(fav) {
+        const title        = fav.title || 'Untitled anime';
+        const image        = safeImageUrl(fav.image);
+        const episodeCount = fav.episode_count;
+        const showType     = fav.show_type;
+        const status       = fav.status;
+        const animeId      = fav.anime_id;
+        const detailId     = fav.id ?? fav.anime_id ?? '';
+        const detailHref   = `${BASE_URL}/anime/${encodeURIComponent(detailId)}`;
+
+        const metaParts = [showType, episodeCount ? `${episodeCount} episodes` : null, status].filter(Boolean);
+        const meta = metaParts.length ? metaParts.join(' · ') : 'No details';
+
+        const card = document.createElement('article');
+        card.className = 'favorite-card';
+        card.dataset.animeId = animeId ?? '';
+
+        const posterLink = document.createElement('a');
+        posterLink.href = detailHref;
+        posterLink.className = 'favorite-poster-link';
+        posterLink.setAttribute('aria-label', `View details for ${title}`);
+
+        const poster = document.createElement('div');
+        poster.className = 'favorite-poster';
+        if (image) {
+            const img = document.createElement('img');
+            img.src = image;
+            img.alt = `${title} poster`;
+            img.loading = 'lazy';
+            img.onerror = () => { img.remove(); poster.textContent = title; };
+            poster.appendChild(img);
+        } else {
+            poster.textContent = title;
+        }
+        posterLink.appendChild(poster);
+
+        const body = document.createElement('div');
+        body.className = 'favorite-body';
+
+        const h2 = document.createElement('h2');
+        const titleLink = document.createElement('a');
+        titleLink.href = detailHref;
+        titleLink.style.color = 'inherit';
+        titleLink.style.textDecoration = 'none';
+        titleLink.textContent = title;
+        h2.appendChild(titleLink);
+        body.appendChild(h2);
+
+        const metaP = document.createElement('p');
+        metaP.textContent = meta;
+        body.appendChild(metaP);
+
+        const actions = document.createElement('div');
+        actions.className = 'favorite-actions';
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'remove-favorite';
+        removeBtn.dataset.animeId = animeId ?? '';
+        removeBtn.textContent = 'Remove';
+        actions.appendChild(removeBtn);
+        body.appendChild(actions);
+
+        card.append(posterLink, body);
+        return card;
+    }
+
+    function render(records) {
+        content.replaceChildren();
+
+        if (records.length === 0) {
+            const p = document.createElement('p');
+            p.className = 'status-message';
+            p.innerHTML = emptyStateHtml();
+            content.appendChild(p);
+            return;
+        }
+
+        const grid = document.createElement('div');
+        grid.className = 'favorites-grid';
+        for (const fav of records) {
+            grid.appendChild(buildCard(fav));
+        }
+        content.appendChild(grid);
+    }
+
+    function attachRemove() {
+        content.querySelectorAll('.remove-favorite').forEach(button => {
             button.addEventListener('click', async () => {
+                if (button.disabled) return;
                 const animeId = button.dataset.animeId;
                 if (!animeId) return;
 
@@ -147,28 +141,23 @@ require __DIR__ . '/partials/header.php';
                 button.textContent = 'Removing…';
 
                 try {
-                    const res = await fetch(`<?= API_URL ?>/favorites/anime/${encodeURIComponent(animeId)}`, {
-                        method: 'DELETE',
-                        headers: { 'Accept': 'application/json' },
-                    });
+                    const res = await fetch(
+                        `${API_URL}/favorites?anime_id=${encodeURIComponent(animeId)}`,
+                        {
+                            method: 'DELETE',
+                            credentials: 'same-origin',
+                            headers: { 'Accept': 'application/json' },
+                        }
+                    );
                     const data = await res.json().catch(() => null);
-                    if (!res.ok) {
-                        throw new Error(data?.error || `Request failed (${res.status})`);
-                    }
-                    if (card) {
-                        card.style.transition = 'opacity .2s ease, transform .2s ease';
-                        card.style.opacity = '0';
-                        card.style.transform = 'scale(.95)';
-                        setTimeout(() => {
-                            card.remove();
-                            const grid = document.querySelector('.favorites-grid');
-                            if (grid && grid.children.length === 0) {
-                                const empty = document.createElement('p');
-                                empty.className = 'status-message';
-                                empty.innerHTML = 'You haven\'t favorited any anime yet. Browse the <a href="<?= BASE_URL ?>/anime" style="color: var(--accent);">anime collection</a> and add some.';
-                                grid.replaceWith(empty);
-                            }
-                        }, 200);
+                    if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+
+                    card?.remove();
+                    if (!content.querySelector('.favorite-card')) {
+                        const p = document.createElement('p');
+                        p.className = 'status-message';
+                        p.innerHTML = emptyStateHtml();
+                        content.replaceChildren(p);
                     }
                 } catch (err) {
                     button.disabled = false;
@@ -177,5 +166,31 @@ require __DIR__ . '/partials/header.php';
                 }
             });
         });
-    </script>
+    }
+
+    fetch(`${API_URL}/favorites`, {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+    })
+        .then(async response => {
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not load favorites.');
+            if (!Array.isArray(result)) throw new Error('Unexpected API response.');
+            return result;
+        })
+        .then(records => {
+            render(records);
+            attachRemove();
+        })
+        .catch(error => {
+            content.replaceChildren();
+            const p = document.createElement('p');
+            p.className = 'status-message';
+            p.setAttribute('role', 'alert');
+            p.textContent = error.message === 'Login required'
+                ? 'Please log in to see your favorites.'
+                : `Could not load favorites: ${error.message}`;
+            content.appendChild(p);
+        });
+</script>
 <?php require __DIR__ . '/partials/footer.php'; ?>
