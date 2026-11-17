@@ -1,143 +1,168 @@
 <?php
+// update_genres.php
+header("Content-Type: application/json; charset=UTF-8");
 
-declare(strict_types=1);
- namespace App\Handler;
-use PDO;
-use PDOException;
-use App\Services\PDOService;
-
-//KILLL MEEEEEEEE FKKKKKKKKKKKN AASGHAGHGJKHSHAJSDJLKSDNJKDSJKSD 
-//THE CATEGORY IS SO MUCH SHIT TO ADD BROOOOOOOO OMGGGGGGG
-
-header("content-type: application/json; charset=UTF-8");
-
-try {
+// 1. Database connection — with SSL and pooler-friendly options
 $envPath = __DIR__ . '/../.env';
+$env = is_file($envPath)
+    ? (parse_ini_file($envPath, false, INI_SCANNER_RAW) ?: [])
+    : [];
 
-if (file_exists($envPath)) {
-    $env = parse_ini_file($envPath);
-    $host = $env['host'];
-    $port = $env['port'];
-    $database = $env['database'];
-    $user = $env['user'];
-    $password = $env['password'];
-} else {
-    die("Error: .env file not found.");
+if (empty($env['host']) || empty($env['database']) || empty($env['user'])) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Database configuration is missing in .env']);
+    exit;
 }
-$dsn = "pgsql:host=$host;port=$port;dbname=$database";
 
-$pdo = new PDO($dsn, $user, $password, [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-]);
-} catch (PDOException $e) {
-   
-    die("Error connecting to the database: " . $e->getMessage());
-}
+$dsn = sprintf(
+    'pgsql:host=%s;port=%s;dbname=%s;sslmode=require',
+    $env['host'],
+    $env['port'] ?? '5432',
+    $env['database']
+);
 
 try {
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS categories (
-            id SERIAL PRIMARY KEY,
-            kitsu_id VARCHAR(255) UNIQUE NOT NULL,
-            name VARCHAR(100) NOT NULL,
-            slug VARCHAR(100)
-        )
-    ");
-    $report['steps'][] = ['create_categories', 'ok'];
-
-    $pdo->exec("
-        CREATE TABLE IF NOT EXISTS anime_categories (
-            anime_id VARCHAR(255) NOT NULL,
-            category_id INT NOT NULL,
-            PRIMARY KEY (anime_id, category_id),
-            FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
-        )
-    ");
-}catch (PDOException $e) {
-    $report['steps'][] = ['create_anime_categories', 'error', $e->getMessage()];
-    die("Error creating tables: " . $e->getMessage());
+    $pdo = new PDO($dsn, $env['user'], $env['password'] ?? '', [
+        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_EMULATE_PREPARES   => true,
+        PDO::ATTR_TIMEOUT            => 15,
+    ]);
+} catch (PDOException $e) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Database connection failed', 'detail' => $e->getMessage()]);
+    exit;
 }
-// Fetch genres from Kitsu and insert into categories
-$report['steps'][] = ['fetch_genres', 'starting'];
 
-$genreUrl = 'https://kitsu.io/api/edge/genres';
-$limit = 20;
-$offset = 0;
-$totalGenres = 0;
+// 2. Canonical genre list
+$canonicalGenres = [
+    'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror',
+    'Mystery', 'Romance', 'Sci-Fi', 'Slice of Life', 'Sports',
+    'Supernatural', 'Thriller', 'Mecha', 'Music', 'Psychological',
+    'School', 'Shounen', 'Seinen', 'Isekai',
+];
 
-$upsertCat = $pdo->prepare("
-    INSERT INTO categories (kitsu_id, name, slug)
-    VALUES (:kitsu_id, :name, :slug)
-    ON CONFLICT (kitsu_id) DO UPDATE SET
-        name = EXCLUDED.name,
-        slug = EXCLUDED.slug
-");
+// 3. Prepare the update statement
+$updateStmt = $pdo->prepare(
+    "UPDATE anime SET genres = CAST(:genres AS text[]) WHERE anime_id = :anime_id"
+);
 
-while (true) {
-    $url = $genreUrl . '?page[limit]=' . $limit . '&page[offset]=' . $offset;
+// 4. Loop through unprocessed anime
+$limit        = 20;
+$totalUpdated = 0;
+$totalSkipped = 0;
+$maxLoops     = 100;   // safety valve: 100 * 20 = 2000 rows max
+$loopCount    = 0;
+
+while ($loopCount++ < $maxLoops) {
+    // No offset: the WHERE filter self-paginates. Each iteration
+    // starts from the first still-unprocessed row.
+    $stmt = $pdo->prepare(
+        "SELECT anime_id FROM anime
+         WHERE genres IS NULL OR genres = '{}'
+         ORDER BY id
+         LIMIT :limit"
+    );
+    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+    $rows = $stmt->fetchAll();
+
+    if (empty($rows)) {
+        break;
+    }
+
+    $animeIds = array_column($rows, 'anime_id');
+    // Kitsu filter[id] wants the raw Kitsu IDs, not intval'd.
+    // They're numeric strings, so keep them as strings.
+    $idsParam = implode(',', array_map('strval', $animeIds));
+
+    $url = 'https://kitsu.io/api/edge/anime?filter[id]=' . rawurlencode($idsParam)
+         . '&include=categories&page[limit]=' . $limit;
 
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER     => [
-            'Accept: application/vnd.api+json',
-            'Content-Type: application/vnd.api+json',
-        ],
-        CURLOPT_USERAGENT      => 'WeebifyGenreSync/1.0',
-        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_USERAGENT      => 'WeebifyGenreUpdater/1.0',
+        CURLOPT_TIMEOUT        => 30,
+        CURLOPT_CONNECTTIMEOUT => 10,
     ]);
-
-    $body = curl_exec($ch);
+    $body     = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $curlErr = curl_error($ch);
-    curl_close($ch);
+    $curlErr  = curl_error($ch);
+    unset($ch); 
 
     if ($body === false || $httpCode !== 200) {
-        $report['steps'][] = ['fetch_genres', 'error', $curlErr ?: "HTTP $httpCode"];
-        break;
+        error_log("Kitsu fetch failed (HTTP {$httpCode}): {$curlErr}");
+        $totalSkipped += count($animeIds);
+        sleep(2);
+        continue;
     }
 
-    $payload = json_decode($body, true);
-    $data = $payload['data'] ?? [];
+    $response = json_decode($body, true);
+    $data     = $response['data']     ?? [];
+    $included = $response['included'] ?? [];
 
-    if (empty($data)) {
-        break;
-    }
-
-    foreach ($data as $genre) {
-        $attributes = $genre['attributes'] ?? [];
-        $kitsuId = $genre['id'] ?? null;
-        $name = $attributes['name'] ?? null;
-        $slug = $attributes['slug'] ?? null;
-
-        if ($kitsuId && $name) {
-            $upsertCat->execute([
-                ':kitsu_id' => $kitsuId,
-                ':name'     => $name,
-                ':slug'     => $slug,
-            ]);
-            $totalGenres++;
+    // Kitsu category ID -> name
+    $categoryMap = [];
+    foreach ($included as $item) {
+        if (($item['type'] ?? '') === 'categories') {
+            $categoryMap[$item['id']] = $item['attributes']['title'] ?? null;
         }
     }
 
-    // Check for next page
-    $links = $payload['links'] ?? [];
-    if (!empty($links['next'])) {
-        $offset += $limit;
-        // Be polite to the API (Kitsu allows ~60 req/min)
-        usleep(500000); // 0.5 seconds
-    } else {
-        break;
+    // Kitsu anime ID -> [genre names]
+    $genresByAnime = [];
+    foreach ($data as $anime) {
+        $animeId = $anime['id'] ?? null;
+        if ($animeId === null) continue;
+
+        $matched = [];
+        foreach ($anime['relationships']['categories']['data'] ?? [] as $rel) {
+            $catId = $rel['id'] ?? null;
+            $name  = $categoryMap[$catId] ?? null;
+            if ($name !== null && in_array($name, $canonicalGenres, true)) {
+                $matched[] = $name;
+            }
+        }
+        $genresByAnime[$animeId] = $matched;
     }
+
+    if (empty($genresByAnime)) {
+        error_log("Kitsu returned no matching anime for batch");
+        $totalSkipped += count($animeIds);
+        sleep(1);
+        continue;
+    }
+
+    // 5. Update each anime with its genre array
+    foreach ($genresByAnime as $animeId => $genres) {
+        // Build a properly quoted Postgres array literal.
+        // Each element is double-quoted with internal quotes escaped,
+        // so genre names containing commas, spaces, or quotes are safe.
+        $elements = array_map(
+            fn($g) => '"' . str_replace('"', '""', $g) . '"',
+            $genres
+        );
+        $pgArray = '{' . implode(',', $elements) . '}';
+
+        try {
+            $updateStmt->execute([
+                ':genres'   => $pgArray,
+                ':anime_id' => $animeId,
+            ]);
+            $totalUpdated++;
+        } catch (PDOException $e) {
+            error_log("UPDATE failed for anime {$animeId}: " . $e->getMessage());
+            $totalSkipped++;
+        }
+    }
+
+    error_log("Processed batch. Updated: {$totalUpdated}, skipped: {$totalSkipped}");
+    sleep(1);
 }
 
-$report['steps'][] = ['fetch_genres', 'ok', ['inserted' => $totalGenres]];
-
-// Verify
-$finalCount = (int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn();
-$report['categories_total'] = $finalCount;
-
-echo json_encode($report, JSON_PRETTY_PRINT);
-
-//i was lazy for this one icl :( sorry)
+echo json_encode([
+    'message'       => 'Genre update complete',
+    'total_updated' => $totalUpdated,
+    'total_skipped' => $totalSkipped,
+]);

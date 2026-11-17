@@ -3,6 +3,11 @@
 
 $envPath = __DIR__ . '/.env';
 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+
 if (file_exists($envPath)) {
     $env = parse_ini_file($envPath);
     $host = $env['host'];
@@ -20,7 +25,10 @@ $dsn = "pgsql:host=$host;port=$port;dbname=$database";
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES => false,
+    // true = PHP prepares the queries itself. Supabase's connection pooler can run a query on a
+    // different connection than the one it was prepared on, which randomly fails with
+    // 'prepared statement "pdo_stmt_..." does not exist'. Values are still escaped safely.
+    PDO::ATTR_EMULATE_PREPARES => true,
 ];
 
 
@@ -82,7 +90,11 @@ $resources = [
         'showtype',
         'status',
         'kitsu_url'
-    ],
+        ],  
+    'favorites'=>[
+              'user_id',
+            'anime_id' 
+        ],
     'manga' => [
         'title',
         'author',
@@ -95,7 +107,7 @@ $resources = [
 ];
 
 // 6. Match the requested endpoint (filter)
-if (!preg_match('#^/(anime|manga)(?:/([0-9]+))?/?$#', $path, $matches)) {
+if (!preg_match('#^/(anime|manga|user|favorites)(?:/([0-9]+))?/?$#', $path, $matches)) {
     http_response_code(404);
     echo json_encode(["error" => "Endpoint not found"]);
     exit;
@@ -108,8 +120,128 @@ $id = isset($matches[2]) && $matches[2] !== ''
 
 $allowedFields = $resources[$table];
 
+//========================================================
+//the regular handler would not work for the favorites table since we're doing a joins 
+if ($table === 'favorites') {
+    $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+
+    if ($userId === null) {
+        http_response_code(401);
+        echo json_encode(["error" => "Login required"]);
+        exit;
+    }
+
+    if ($method === 'GET') {
+        $animeId = filter_var($_GET['anime_id'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        // Single-anime check (used by the detail-page toggle)
+        if ($animeId !== false && $animeId !== null) {
+            $stmt = $pdo->prepare(
+                "SELECT anime_id FROM public.favorites
+                 WHERE user_id = :user_id AND anime_id = :anime_id
+                 LIMIT 1"
+            );
+            $stmt->execute([':user_id' => $userId, ':anime_id' => $animeId]);
+            echo json_encode(["isFavorite" => (bool) $stmt->fetch()]);
+            exit;
+        }
+
+        // List with anime details (used by the favorites page)
+        $stmt = $pdo->prepare(
+            "SELECT f.anime_id,
+                    a.id, a.title, a.image, a.episode_count,
+                    a.status, a.show_type, a.age_rating, a.popularity_rank
+               FROM public.favorites f
+               JOIN public.anime a ON a.anime_id = f.anime_id
+              WHERE f.user_id = :user_id
+              ORDER BY f.created_at DESC"
+        );
+        $stmt->execute([':user_id' => $userId]);
+        echo json_encode($stmt->fetchAll());
+        exit;
+    }
+
+    // POST / DELETE unchanged — see previous file
+
+
+     if ($method === 'POST') {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $animeId = filter_var($input['anime_id'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        if ($animeId === false || $animeId === null) {
+            http_response_code(400);
+            echo json_encode(["error" => "A valid anime_id is required"]);
+            exit;
+        }
+
+        $stmt = $pdo->prepare(
+            "INSERT INTO public.favorites (user_id, anime_id)
+             VALUES (:user_id, :anime_id)
+             ON CONFLICT (user_id, anime_id) DO NOTHING"
+        );
+        $stmt->execute([':user_id' => $userId, ':anime_id' => $animeId]);
+
+        http_response_code(201);
+        echo json_encode(["success" => true]);
+        exit;
+    }
+
+     if ($method === 'DELETE') {
+        $animeId = filter_var($_GET['anime_id'] ?? null, FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1],
+        ]);
+
+        if ($animeId === false || $animeId === null) {
+            http_response_code(400);
+            echo json_encode(["error" => "A valid anime_id is required"]);
+            exit;
+        }
+
+        $stmt = $pdo->prepare(
+            "DELETE FROM public.favorites
+             WHERE user_id = :user_id AND anime_id = :anime_id"
+        );
+        $stmt->execute([':user_id' => $userId, ':anime_id' => $animeId]);
+
+        echo json_encode(["success" => true]);
+        exit;
+    }
+}
+
 // 7. GET all records or POST a new record
 if ($id === null) {
+
+    // GET all anime: filters, categories, sorting and cursor pagination
+    // (see app/Services/AnimeListService.php). Cursors are sent back in headers so the
+    // response body stays a plain JSON array, the same as before.
+    if ($method === 'GET' && $table === 'anime') {
+        require_once __DIR__ . '/app/Services/AnimeListService.php';
+        $animeFilters = require __DIR__ . '/app/config/anime-filters.php';
+
+        try {
+            $result = (new App\Services\AnimeListService($pdo, $animeFilters))->list($_GET);
+        } catch (InvalidArgumentException $e) {
+            http_response_code(400);
+            echo json_encode(["error" => $e->getMessage()]);
+            exit;
+        }
+
+        header('Access-Control-Expose-Headers: X-Next-Cursor, X-Prev-Cursor');
+        if ($result['next'] !== null) {
+            header('X-Next-Cursor: ' . $result['next']);
+        }
+        if ($result['prev'] !== null) {
+            header('X-Prev-Cursor: ' . $result['prev']);
+        }
+
+        http_response_code(200);
+        echo json_encode($result['records']);
+        exit;
+    }
 
     // GET all records
     if ($method === 'GET') {
@@ -175,6 +307,8 @@ if ($id === null) {
         }
 
         // Title is required
+        if($table!='user')
+            {
         if (
             !isset($input['title']) ||
             !is_string($input['title']) ||
@@ -186,6 +320,7 @@ if ($id === null) {
             ]);
             exit;
         }
+            }
 
         // Reject unknown fields
         $unknownFields = array_diff(
@@ -376,6 +511,8 @@ if ($method === 'PUT' || $method === 'PATCH') {
     echo json_encode($stmt->fetch());
     exit;
 }
+
+
 
 // Unsupported method
 http_response_code(405);

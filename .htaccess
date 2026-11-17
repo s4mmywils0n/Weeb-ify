@@ -1,0 +1,15 @@
+RewriteEngine On
+
+# Never serve the .env file (database password) to the browser
+<FilesMatch "^\.env">
+    Require all denied
+</FilesMatch>
+
+# /Weeb-ify/  ->  public/
+RewriteRule ^$ public/ [L]
+
+# Any path that is not a real file or folder (e.g. /Weeb-ify/anime/5) -> public/
+# Real files such as api.php keep working as before.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ public/$1 [L]
