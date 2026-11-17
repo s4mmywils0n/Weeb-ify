@@ -50,6 +50,9 @@ $env = is_file($envPath)
     : [];
 $supabaseUrl = rtrim((string) ($env['url'] ?? ''), '/');
 $supabaseKey = (string) ($env['key'] ?? '');
+
+// anime-detail.php (before the <script>)
+$favoriteUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 ?>
 <?php
 $title = 'Anime details — Weebi:fy';
@@ -80,11 +83,13 @@ require __DIR__ . '/partials/header.php';
         const supabaseKey = <?= json_encode($supabaseKey, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
         const content = document.getElementById("record-content");
         const title = document.getElementById("record-title");
+        const favoriteUserId = <?= $favoriteUserId === null ? 'null' : (int) $favoriteUserId ?>;
         const favoriteButton = document.getElementById("favorite-toggle");
         const favoriteMessage = document.getElementById("favorite-message");
-        const favoriteUserId = 1;
+        
         let currentAnimeId = null;
         let isFavorite = false;
+
 
         function favoritesUrl(animeId) {
             const query = new URLSearchParams({

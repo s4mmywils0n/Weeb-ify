@@ -80,6 +80,11 @@ $resources = [
         'agerating',
         'createdat',
         'enddate',
+        'favorites'=>[
+              'user_id',
+            'anime_id'
+        
+        ],
         'episodecount',
         'popularityrank',
         'showtype',
@@ -98,7 +103,7 @@ $resources = [
 ];
 
 // 6. Match the requested endpoint (filter)
-if (!preg_match('#^/(anime|manga|favorites|user)(?:/([0-9]+))?/?$#', $path, $matches)) {
+if (!preg_match('#^/(anime|manga|user)(?:/([0-9]+))?/?$#', $path, $matches)) {
     http_response_code(404);
     echo json_encode(["error" => "Endpoint not found"]);
     exit;
@@ -398,6 +403,10 @@ if ($method === 'PUT' || $method === 'PATCH') {
     echo json_encode($stmt->fetch());
     exit;
 }
+
+//========================================================
+//
+
 
 // Unsupported method
 http_response_code(405);

@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+
 require_once __DIR__ . '/../app/core/Router.php';
 require_once __DIR__ . '/../app/Services/PDOService.php';
 require_once __DIR__ . '/../app/models/AccountModel.php';
@@ -17,7 +18,10 @@ use App\Middleware\GuestMiddleware;
 use App\Middleware\OwnsProfileMiddleware;
 
 // Sessions remember who is logged in between requests
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+   session_start();
+}
+
 
 // ---------------------------------------------------------------------------
 // 1. Work out the base URL
@@ -124,6 +128,8 @@ $router->get('/register', fn() => view('register'), [GuestMiddleware::class]);
 
 // Sign-up form submits here: validate, check username/email, create the user
 $router->post('/register', [AuthController::class, 'register'], [GuestMiddleware::class]);
+
+$router->post('/logout',[AuthController::class, 'LogOut']);
 
 
 // ---------------------------------------------------------------------------

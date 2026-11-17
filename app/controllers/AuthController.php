@@ -13,6 +13,8 @@ class AuthController
     // POST /login
     public function login(): void
     {
+        session_start();
+
         $login = is_string($_POST['login'] ?? null) ? trim($_POST['login']) : '';
         $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
 
@@ -49,6 +51,7 @@ class AuthController
             redirect(isSafeLocalPath($intended) ? $intended : '/');
         }
 
+
         http_response_code(422);
         view('login', ['error' => $error, 'old' => ['login' => $login]]);
     }
@@ -56,6 +59,7 @@ class AuthController
     // POST /register
     public function register(): void
     {
+      
         $text = fn(string $key): string => is_string($_POST[$key] ?? null) ? trim($_POST[$key]) : '';
 
         // Values typed into the form (the password is never sent back to the page)
@@ -87,6 +91,8 @@ class AuthController
                 $errors['email'] = 'Email account is already being used';
             }
 
+           $userId = 0;
+
             if ($errors === []) {
                 $account->createAccount(
                     $old['firstName'],
@@ -96,6 +102,7 @@ class AuthController
                     $password
                 );
                 $created = true;
+
             }
         } catch (Throwable $e) {
             // Log the real problem for developers, show a safe message to the user
@@ -104,10 +111,24 @@ class AuthController
         }
 
         if ($created) {
+
             redirect('/login?registered=1');
         }
 
         http_response_code(422);
         view('register', ['errors' => $errors, 'old' => $old]);
     }
+
+    public function LogOut():void
+    {
+        session_start();
+
+        $_SESSION = [];
+
+        session_destroy();
+        redirect('/login?registered=0');
+        exit;
+    }
+
+
 }
