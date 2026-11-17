@@ -25,6 +25,8 @@ $extraHead         ??= '';
 
 $e = fn(string $value): string => htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
 $current = fn(string $item): string => $active === $item ? ' aria-current="page"' : '';
+
+//make the logic for the header search
 ?>
 <!DOCTYPE html>
 <html lang="en">

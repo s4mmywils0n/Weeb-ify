@@ -96,6 +96,11 @@ $router->get('/anime', fn() => view('anime'));
 
 $router->get('/anime/{id}', fn(string $id) => view('anime-id', ['id' => $id]));
 
+$router->get('/manga', fn() => view('manga'));
+
+$router->get('/products', fn() =>view('products'));
+
+
 // Middleware (3rd argument) runs first, in order:
 //   AuthMiddleware        - must be logged in (otherwise -> /login, then back here)
 //   GuestMiddleware       - must be logged OUT (otherwise -> /)
@@ -120,7 +125,6 @@ $router->get('/register', fn() => view('register'), [GuestMiddleware::class]);
 // Sign-up form submits here: validate, check username/email, create the user
 $router->post('/register', [AuthController::class, 'register'], [GuestMiddleware::class]);
 
-$router->get('/manga', fn() => view('manga'));
 
 // ---------------------------------------------------------------------------
 // 4. Dispatch
