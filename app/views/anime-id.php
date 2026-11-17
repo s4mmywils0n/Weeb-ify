@@ -48,8 +48,8 @@ $envPath = dirname(__DIR__, 2) . '/.env';
 $env = is_file($envPath)
     ? (parse_ini_file($envPath, false, INI_SCANNER_RAW) ?: [])
     : [];
-$supabaseUrl = rtrim((string) ($env['VITE_SUPABASE_URL'] ?? ''), '/');
-$supabaseKey = (string) ($env['VITE_SUPABASE_PUBLISHABLE_KEY'] ?? '');
+$supabaseUrl = rtrim((string) ($env['url'] ?? ''), '/');
+$supabaseKey = (string) ($env['key'] ?? '');
 ?>
 <?php
 $title = 'Anime details — Weebi:fy';
