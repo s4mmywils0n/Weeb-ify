@@ -27,8 +27,20 @@ require __DIR__ . '/partials/header.php';
         <p class="status-message">Loading favorites…</p>
     </section>
 </main>
-<div>
 <script>
+   const favChecker = document.createElement("checkbox");
+$anime = document.getElementsByClassName("anime");
+$manga = document.getElementByClassName("manga");
+
+</script>
+<br>
+<button class='login-link' onclick="show('anime')">Favorite Animes</button>
+<button class='login-link' onclick="show('manga')">Favorite mangas</button>
+
+<div id="anime">
+<script>
+
+
     const BASE_URL = <?= json_encode(BASE_URL) ?>;
     const API_URL  = <?= json_encode(API_URL) ?>;
     const content  = document.getElementById('favorites-content');
@@ -190,6 +202,185 @@ require __DIR__ . '/partials/header.php';
             p.textContent = error.message === 'Login required'
                 ? 'Please log in to see your favorites.'
                 : `Could not load favorites: ${error.message}`;
+            content.appendChild(p);
+        });
+
+</script>
+</div>
+<div id = 'manga'>
+    <script>
+    const BASE_URL = <?= json_encode(BASE_URL) ?>;
+    const API_URL  = <?= json_encode(API_URL) ?>;
+  
+
+    function safeImageUrl(value) {
+        return typeof value === 'string' && /^https?:\/\//i.test(value.trim())
+            ? value.trim()
+            : '';
+    }
+
+    function emptyStateHtml() {
+        return 'You haven\'t favorited any manga yet. Browse the ' +
+            `<a href="${BASE_URL}/manga" style="color: var(--accent);">manga collection</a> and add some.`;
+    }
+
+    function buildCard(fav) {
+        const title        = fav.title || 'Untitled manga';
+        const image        = safeImageUrl(fav.image);
+        const chapterCount = fav.chapter_count ?? fav.chaptercount;
+        const volumeCount  = fav.volume_count  ?? fav.volumecount;
+        const mangaType    = fav.manga_type    ?? fav.mangatype;
+        const serialization = fav.serialization;
+        const status       = fav.status;
+        const mangaId      = fav.manga_id;
+        const detailId     = fav.id ?? fav.manga_id ?? '';
+        const detailHref   = `${BASE_URL}/manga/${encodeURIComponent(detailId)}`;
+
+        const metaParts = [];
+        if (mangaType) metaParts.push(mangaType);
+        if (volumeCount !== null && volumeCount !== undefined) {
+            metaParts.push(`${volumeCount} ${Number(volumeCount) === 1 ? 'volume' : 'volumes'}`);
+        }
+        if (chapterCount !== null && chapterCount !== undefined) {
+            metaParts.push(`${chapterCount} ${Number(chapterCount) === 1 ? 'chapter' : 'chapters'}`);
+        }
+        if (serialization) metaParts.push(serialization);
+        if (status) metaParts.push(status);
+        const meta = metaParts.length ? metaParts.join(' · ') : 'No details';
+
+        const card = document.createElement('article');
+        card.className = 'favorite-card';
+        card.dataset.mangaId = mangaId ?? '';
+
+        const posterLink = document.createElement('a');
+        posterLink.href = detailHref;
+        posterLink.className = 'favorite-poster-link';
+        posterLink.setAttribute('aria-label', `View details for ${title}`);
+
+        const poster = document.createElement('div');
+        poster.className = 'favorite-poster';
+        if (image) {
+            const img = document.createElement('img');
+            img.src = image;
+            img.alt = `${title} poster`;
+            img.loading = 'lazy';
+            img.onerror = () => { img.remove(); poster.textContent = title; };
+            poster.appendChild(img);
+        } else {
+            poster.textContent = title;
+        }
+        posterLink.appendChild(poster);
+
+        const body = document.createElement('div');
+        body.className = 'favorite-body';
+
+        const h2 = document.createElement('h2');
+        const titleLink = document.createElement('a');
+        titleLink.href = detailHref;
+        titleLink.style.color = 'inherit';
+        titleLink.style.textDecoration = 'none';
+        titleLink.textContent = title;
+        h2.appendChild(titleLink);
+        body.appendChild(h2);
+
+        const metaP = document.createElement('p');
+        metaP.textContent = meta;
+        body.appendChild(metaP);
+
+        const actions = document.createElement('div');
+        actions.className = 'favorite-actions';
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'remove-favorite';
+        removeBtn.dataset.mangaId = mangaId ?? '';
+        removeBtn.textContent = 'Remove';
+        actions.appendChild(removeBtn);
+        body.appendChild(actions);
+
+        card.append(posterLink, body);
+        return card;
+    }
+
+    function render(records) {
+        content.replaceChildren();
+
+        if (records.length === 0) {
+            const p = document.createElement('p');
+            p.className = 'status-message';
+            p.innerHTML = emptyStateHtml();
+            content.appendChild(p);
+            return;
+        }
+
+        const grid = document.createElement('div');
+        grid.className = 'favorites-grid';
+        for (const fav of records) {
+            grid.appendChild(buildCard(fav));
+        }
+        content.appendChild(grid);
+    }
+
+    function attachRemove() {
+        content.querySelectorAll('.remove-favorite').forEach(button => {
+            button.addEventListener('click', async () => {
+                if (button.disabled) return;
+                const mangaId = button.dataset.mangaId;
+                if (!mangaId) return;
+
+                const card = button.closest('.favorite-card');
+                button.disabled = true;
+                button.textContent = 'Removing…';
+
+                try {
+                    const res = await fetch(
+                        `${API_URL}/favorites?manga_id=${encodeURIComponent(mangaId)}`,
+                        {
+                            method: 'DELETE',
+                            credentials: 'same-origin',
+                            headers: { 'Accept': 'application/json' },
+                        }
+                    );
+                    const data = await res.json().catch(() => null);
+                    if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+
+                    card?.remove();
+                    if (!content.querySelector('.favorite-card')) {
+                        const p = document.createElement('p');
+                        p.className = 'status-message';
+                        p.innerHTML = emptyStateHtml();
+                        content.replaceChildren(p);
+                    }
+                } catch (err) {
+                    button.disabled = false;
+                    button.textContent = 'Remove';
+                    alert(err.message);
+                }
+            });
+        });
+    }
+
+    fetch(`${API_URL}/favorites?type=manga`, {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+    })
+        .then(async response => {
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Could not load manga favorites.');
+            if (!Array.isArray(result)) throw new Error('Unexpected API response.');
+            return result;
+        })
+        .then(records => {
+            render(records);
+            attachRemove();
+        })
+        .catch(error => {
+            content.replaceChildren();
+            const p = document.createElement('p');
+            p.className = 'status-message';
+            p.setAttribute('role', 'alert');
+            p.textContent = error.message === 'Login required'
+                ? 'Please log in to see your manga favorites.'
+                : `Could not load manga favorites: ${error.message}`;
             content.appendChild(p);
         });
 </script>
