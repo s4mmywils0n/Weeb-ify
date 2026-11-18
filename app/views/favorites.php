@@ -36,7 +36,7 @@ require __DIR__ . '/partials/header.php';
 <script>
 function show(divId) {
     // 1. Hide all divs with the 'content-div' class
-    const divs = document.querySelectorAll('.content');
+    const divs = document.querySelectorAll('.favorites-content');
     divs.forEach(div => div.style.display = 'none');
 
     // 2. Show the targeted div
@@ -219,7 +219,7 @@ function show(divId) {
 </div>
 <div id ="manga" class ="content">
     <script>
-    const BASE_URL = <?= json_encode(BASE_URL) ?>;
+    const BASE_URL = <?= json_encode(BASE_URL) ?>;//might delete
     const API_URL  = <?= json_encode(API_URL) ?>;
   
 

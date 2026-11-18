@@ -139,82 +139,123 @@ if ($table === 'favorites') {
         exit;
     }
 
+    
+    // Read the JSON body once, for the verbs that carry one.
+    $body = [];
+    if (in_array($method, ['POST', 'PUT', 'PATCH'], true)) {
+        $decoded = json_decode((string) file_get_contents('php://input'), true);
+        $body = is_array($decoded) && !array_is_list($decoded) ? $decoded : [];
+    }
+    // ---- Which kind of favorite is this request about? ----
+    $type = is_string($_GET['type'] ?? null) ? strtolower(trim($_GET['type'])) : '';
+    if ($type === '') {
+        $type = array_key_exists('manga_id', $_GET) || array_key_exists('manga_id', $body)
+            ? 'manga'
+            : 'anime';
+    }
+    if (!in_array($type, ['anime', 'manga'], true)) {
+        http_response_code(400);
+        echo json_encode(["error" => "Invalid type. Allowed: anime, manga"]);
+        exit;
+    }
+    // Everything that differs between the two kinds lives in this config.
+    $target = $type === 'manga'
+        ? [
+            'column' => 'manga_id',
+            'table'  => 'public.manga',
+            'alias'  => 'm',
+            'detail' => 'm.id, m.title, m.image, m.chaptercount AS chapter_count, '
+                      . 'm.volumecount AS volume_count, m.mangatype AS manga_type, '
+                      . 'm.serialization, m.status, m.agerating AS age_rating, '
+                      . 'm.popularityrank AS popularity_rank',
+        ]
+        : [
+            'column' => 'anime_id',
+            'table'  => 'public.anime',
+            'alias'  => 'a',
+            'detail' => 'a.id, a.title, a.image, a.episode_count, '
+                      . 'a.status, a.show_type, a.age_rating, a.popularity_rank',
+        ];
+    $column = $target['column'];
+    $alias  = $target['alias'];
+    // The id in question, accepted from the query string or from the JSON body.
+    $targetId = filter_var(
+        $_GET[$column] ?? $body[$column] ?? null,
+        FILTER_VALIDATE_INT,
+        ['options' => ['min_range' => 1]]
+    );
+    $targetId = ($targetId === false || $targetId === null) ? null : (int) $targetId;
+    // ---- GET: "is this one a favorite?" when an id is given, otherwise the list ----
     if ($method === 'GET') {
-        $animeId = filter_var($_GET['anime_id'] ?? null, FILTER_VALIDATE_INT, [
-            'options' => ['min_range' => 1],
-        ]);
-
-        // Single-anime check (used by the detail-page toggle)
-        if ($animeId !== false && $animeId !== null) {
+        if ($targetId !== null) {
             $stmt = $pdo->prepare(
-                "SELECT anime_id FROM public.favorites
-                 WHERE user_id = :user_id AND anime_id = :anime_id
-                 LIMIT 1"
+                "SELECT $column FROM public.favorites
+                  WHERE user_id = :user_id AND $column = :target_id
+                  LIMIT 1"
             );
-            $stmt->execute([':user_id' => $userId, ':anime_id' => $animeId]);
+            $stmt->execute([':user_id' => $userId, ':target_id' => $targetId]);
             echo json_encode(["isFavorite" => (bool) $stmt->fetch()]);
             exit;
         }
-
-        // List with anime details (used by the favorites page)
-        $stmt = $pdo->prepare(
-            "SELECT f.anime_id,
-                    a.id, a.title, a.image, a.episode_count,
-                    a.status, a.show_type, a.age_rating, a.popularity_rank
-               FROM public.favorites f
-               JOIN public.anime a ON a.anime_id = f.anime_id
-              WHERE f.user_id = :user_id
-              ORDER BY f.created_at DESC"
-        );
-        $stmt->execute([':user_id' => $userId]);
-        echo json_encode($stmt->fetchAll());
-        exit;
-    }
-
-    // POST / DELETE unchanged — see previous file
-
-
-     if ($method === 'POST') {
-        $input = json_decode(file_get_contents('php://input'), true);
-        $animeId = filter_var($input['anime_id'] ?? null, FILTER_VALIDATE_INT, [
-            'options' => ['min_range' => 1],
-        ]);
-
-        if ($animeId === false || $animeId === null) {
-            http_response_code(400);
-            echo json_encode(["error" => "A valid anime_id is required"]);
+        try {
+            $stmt = $pdo->prepare(
+                "SELECT f.$column, {$target['detail']}
+                   FROM public.favorites f
+                   JOIN {$target['table']} $alias ON $alias.$column = f.$column
+                  WHERE f.user_id = :user_id
+                  ORDER BY f.created_at DESC"
+            );
+            $stmt->execute([':user_id' => $userId]);
+            $records = $stmt->fetchAll();
+        } catch (PDOException $e) {
+            error_log("Favorites list ($type) failed: " . $e->getMessage());
+            http_response_code(500);
+            echo json_encode(["error" => "Could not load favorites."]);
             exit;
         }
-
-        $stmt = $pdo->prepare(
-            "INSERT INTO public.favorites (user_id, anime_id)
-             VALUES (:user_id, :anime_id)
-             ON CONFLICT (user_id, anime_id) DO NOTHING"
-        );
-        $stmt->execute([':user_id' => $userId, ':anime_id' => $animeId]);
-
+        echo json_encode($records);
+        exit;
+    }
+    // ---- POST: add it (idempotent, so a double press is not an error) ----
+    if ($method === 'POST') {
+        if ($targetId === null) {
+            http_response_code(400);
+            echo json_encode(["error" => "A valid $column is required"]);
+            exit;
+        }
+        try {
+            // No ON CONFLICT target: this works whether uniqueness comes from the plain
+            // (user_id, anime_id) key or from the partial manga index.
+            $stmt = $pdo->prepare(
+                "INSERT INTO public.favorites (user_id, $column)
+                 VALUES (:user_id, :target_id)
+                 ON CONFLICT DO NOTHING"
+            );
+            $stmt->execute([':user_id' => $userId, ':target_id' => $targetId]);
+        } catch (PDOException $e) {
+            // The CHECK (one target per row) and the foreign key both land here,
+            // so a bad or unknown id is a 400 instead of a 500.
+            error_log("Favorites insert ($type $targetId) failed: " . $e->getMessage());
+            http_response_code(400);
+            echo json_encode(["error" => "That $column could not be favorited."]);
+            exit;
+        }
         http_response_code(201);
         echo json_encode(["success" => true]);
         exit;
     }
-
-     if ($method === 'DELETE') {
-        $animeId = filter_var($_GET['anime_id'] ?? null, FILTER_VALIDATE_INT, [
-            'options' => ['min_range' => 1],
-        ]);
-
-        if ($animeId === false || $animeId === null) {
+    // ---- DELETE: remove it (also idempotent) ----
+    if ($method === 'DELETE') {
+        if ($targetId === null) {
             http_response_code(400);
-            echo json_encode(["error" => "A valid anime_id is required"]);
+            echo json_encode(["error" => "A valid $column is required"]);
             exit;
         }
-
         $stmt = $pdo->prepare(
             "DELETE FROM public.favorites
-             WHERE user_id = :user_id AND anime_id = :anime_id"
+              WHERE user_id = :user_id AND $column = :target_id"
         );
-        $stmt->execute([':user_id' => $userId, ':anime_id' => $animeId]);
-
+        $stmt->execute([':user_id' => $userId, ':target_id' => $targetId]);
         echo json_encode(["success" => true]);
         exit;
     }
@@ -269,12 +310,24 @@ if ($id === null) {
 
         $itemsPerPage = 20;
         $offset = ($page - 1) * $itemsPerPage;
+        $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
+            ? trim($_GET['q'])
+            : '';
+        $searchCondition = $table === 'manga' && $searchQuery !== ''
+            ? ' WHERE (title ILIKE :search_title OR author ILIKE :search_author OR genre ILIKE :search_genre)'
+            : '';
 
         $stmt = $pdo->prepare(
-            "SELECT * FROM public.$table
+            "SELECT * FROM public.$table" . $searchCondition . "
              ORDER BY id ASC
              LIMIT :limit OFFSET :offset"
         );
+        if ($searchCondition !== '') {
+            $searchTerm = '%' . $searchQuery . '%';
+            $stmt->bindValue(':search_title', $searchTerm, PDO::PARAM_STR);
+            $stmt->bindValue(':search_author', $searchTerm, PDO::PARAM_STR);
+            $stmt->bindValue(':search_genre', $searchTerm, PDO::PARAM_STR);
+        }
         $stmt->bindValue(':limit', $itemsPerPage, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
