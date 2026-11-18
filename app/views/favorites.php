@@ -141,7 +141,7 @@ function show(divId) {
             p.innerHTML = emptyStateHtml();
             content.appendChild(p);
             return;
-        }p
+        }
 
         const grid = document.createElement('div');
         grid.className = 'favorites-grid';
