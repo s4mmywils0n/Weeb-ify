@@ -61,18 +61,13 @@ $sql = "SELECT id FROM anime WHERE id = 1";
 $stmt = $pdo->prepare($sql);
 $stmt->execute();
 
-if ($stmt->rowCount() > 0) {
-    echo json_encode(['message' => 'Data already exists in the database.']);
-    exit;
-}
-
-$sql = "INSERT INTO anime (anime_id, slug, image, title, synopsis, ageRating, createdAt, endDate, episodeCount, popularityRank, showType, status, kitsu_url)
+if ($stmt->rowCount() < 0) {
+    
+    $sql = "INSERT INTO anime (anime_id, slug, image, title, synopsis, ageRating, createdAt, endDate, episodeCount, popularityRank, showType, status, kitsu_url)
         VALUES (:anime_id, :slug, :image, :title, :synopsis, :ageRating, :createdAt, :endDate, :episodeCount, :popularityRank, :showType, :status, :kitsu_url)";
 
 
 $stmt = $pdo->prepare($sql);
-
-
 
 for($i = 0; $i < $fetch; $i += $page) {
     $url = "$ch?page[limit]=$page&page[offset]=$i";
@@ -114,31 +109,41 @@ for($i = 0; $i < $fetch; $i += $page) {
                 ':status' => $attributes['status'] ?? null,
                 ':kitsu_url' => $slug ? "https://kitsu.io/anime/{$slug}" : null,
             ]);
+
+            
+    //fkn added sleep(1) to be nice to the api mother fucker stopped the load :(
+    //idk if this is gonna break it
         } catch (PDOException $e) {
             echo "Error inserting anime: " . htmlspecialchars($e->getMessage()) . "\n";
         }
     }
 }
-    //fkn added sleep(1) to be nice to the api mother fucker stopped the load :(
-    //idk if this is gonna break it
+
+
+} else {
 
     $mh = "https://kitsu.io/api/edge/manga";
+
 
 
     $sql = "SELECT id FROM manga WHERE id = 1";
 $stmt = $pdo->prepare($sql);
 $stmt->execute();
 
-if ($stmt->rowCount() > 0) {
-    echo json_encode(['message' => 'Data already exists in the database.']);
-    exit;
-}
+if ($stmt->rowCount() <= 0) {
 
-$sql = "INSERT INTO anime (anime_id, slug, image, title, synopsis, ageRating, createdAt, endDate, episodeCount, popularityRank, showType, status, kitsu_url)
-        VALUES (:anime_id, :slug, :image, :title, :synopsis, :ageRating, :createdAt, :endDate, :episodeCount, :popularityRank, :showType, :status, :kitsu_url)";
+$sql = "
+    INSERT INTO manga (manga_id, slug, image, title, synopsis, ageRating,
+                       createdAt, endDate, chapterCount, volumeCount,
+                       popularityRank, mangaType, serialization, status, kitsu_url)
+    VALUES (:manga_id, :slug, :image, :title, :synopsis, :ageRating,
+            :createdAt, :endDate, :chapterCount, :volumeCount,
+            :popularityRank, :mangaType, :serialization, :status, :kitsu_url)
+    ON CONFLICT (manga_id) DO NOTHING
+";
 
+$stmt = $pdo -> prepare($sql);
 
-$stmt = $pdo->prepare($sql);
 
 for($i = 0; $i < $fetch; $i += $page) {
     $url = "$mh?page[limit]=$page&page[offset]=$i";
@@ -161,7 +166,7 @@ for($i = 0; $i < $fetch; $i += $page) {
     foreach ($data as $manga) {
         $attributes = $manga['attributes'] ?? [];
         $slug = $attributes['slug'] ?? null;
-        $image = $attributes['posterImage']['large'] ?? null;
+        $image = $attributes['posterImage']['original'] ?? null;
 
         // Bind parameters and execute the statement
         try {
@@ -187,6 +192,19 @@ for($i = 0; $i < $fetch; $i += $page) {
         }
     }
 }
+} else {
+    echo "There is already data in both database";
+}
+}
+
+
+
+
+
+
+
+
+
 
 
 

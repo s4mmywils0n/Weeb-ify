@@ -27,7 +27,7 @@ require __DIR__ . '/partials/header.php';
         <p class="status-message">Loading favorites…</p>
     </section>
 </main>
-
+<div>
 <script>
     const BASE_URL = <?= json_encode(BASE_URL) ?>;
     const API_URL  = <?= json_encode(API_URL) ?>;
@@ -193,4 +193,5 @@ require __DIR__ . '/partials/header.php';
             content.appendChild(p);
         });
 </script>
+</div>
 <?php require __DIR__ . '/partials/footer.php'; ?>
