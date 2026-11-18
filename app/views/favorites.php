@@ -22,22 +22,32 @@ require __DIR__ . '/partials/header.php';
     <br>
     <span class="eyebrow">Your library</span>
     <h1>Favorite <span>anime.</span></h1>
+  
+<button class='login-link' onclick="show('anime')">Favorite Animes</button>
+<button class='login-link' onclick="show('manga')">Favorite mangas</button>
+    <br>
     <br>
     <section id="favorites-content" aria-live="polite">
         <p class="status-message">Loading favorites…</p>
     </section>
 </main>
+
+
 <script>
-   const favChecker = document.createElement("checkbox");
-$anime = document.getElementsByClassName("anime");
-$manga = document.getElementByClassName("manga");
+function show(divId) {
+    // 1. Hide all divs with the 'content-div' class
+    const divs = document.querySelectorAll('.content');
+    divs.forEach(div => div.style.display = 'none');
+
+    // 2. Show the targeted div
+    const activeDiv = document.getElementById(divId);
+    if (activeDiv) {
+      activeDiv.style.display = 'block';
+    }
+  }
 
 </script>
-<br>
-<button class='login-link' onclick="show('anime')">Favorite Animes</button>
-<button class='login-link' onclick="show('manga')">Favorite mangas</button>
-
-<div id="anime">
+<div id="anime" class="content">
 <script>
 
 
@@ -207,7 +217,7 @@ $manga = document.getElementByClassName("manga");
 
 </script>
 </div>
-<div id = 'manga'>
+<div id ="manga" class ="content">
     <script>
     const BASE_URL = <?= json_encode(BASE_URL) ?>;
     const API_URL  = <?= json_encode(API_URL) ?>;
