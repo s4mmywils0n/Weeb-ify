@@ -102,6 +102,8 @@ $router->get('/anime/{id}', fn(string $id) => view('anime-id', ['id' => $id]));
 
 $router->get('/manga', fn() => view('manga'));
 
+$router->get('/manga/{id}', fn(string $id) => view('manga-id', ['id' => $id]));
+
 $router->get('/products', fn() =>view('products'));
 
 $router->post('/logout',[AuthController::class, 'LogOut']);

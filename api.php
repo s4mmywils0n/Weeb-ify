@@ -95,14 +95,22 @@ $resources = [
               'user_id',
             'anime_id' 
         ],
-    'manga' => [
+     'manga' => [
+        'manga_id',
+        'slug',
+        'image',
         'title',
-        'author',
-        'year_published',
-        'number_of_volumes',
-        'number_of_chapters',
-        'genre',
-        'status'
+        'synopsis',
+        'agerating',
+        'createdat',
+        'enddate',
+        'chaptercount',
+        'volumecount',
+        'popularityrank',
+        'mangatype',
+        'serialization',
+        'status',
+        'kitsu_url',
     ]
 ];
 
