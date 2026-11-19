@@ -1,63 +1,143 @@
 <?php
+
 declare(strict_types=1);
 
-$scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '/index.php');
-$publicBasePath = rtrim(dirname($scriptName), '/');
-if ($publicBasePath === '.') {
-    $publicBasePath = '';
-}
-$apiBaseUrl = $publicBasePath . '/api.php';
 
-$requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
-if ($publicBasePath !== '' && str_starts_with($requestPath, $publicBasePath)) {
-    $requestPath = substr($requestPath, strlen($publicBasePath));
-}
-$requestPath = '/' . trim($requestPath, '/');
-if ($requestPath === '//') {
-    $requestPath = '/';
+require_once __DIR__ . '/../app/core/Router.php';
+require_once __DIR__ . '/../app/Services/PDOService.php';
+require_once __DIR__ . '/../app/models/AccountModel.php';
+require_once __DIR__ . '/../app/controllers/AuthController.php';
+require_once __DIR__ . '/../app/middleware/Middleware.php';
+require_once __DIR__ . '/../app/middleware/AuthMiddleware.php';
+require_once __DIR__ . '/../app/middleware/GuestMiddleware.php';
+require_once __DIR__ . '/../app/middleware/OwnsProfileMiddleware.php';
+
+use App\Controllers\AuthController;
+use App\Middleware\AuthMiddleware;
+use App\Middleware\GuestMiddleware;
+use App\Middleware\OwnsProfileMiddleware;
+
+// Sessions remember who is logged in between requests
+if (session_status() === PHP_SESSION_NONE) {
+   session_start();
 }
 
-$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-function renderView(string $name): void
+// ---------------------------------------------------------------------------
+// 1. Work out the base URL
+// ---------------------------------------------------------------------------
+// The site can be reached two ways:
+//   http://localhost/Weeb-ify/anime          (root .htaccess forwards into public/)
+//   http://localhost/Weeb-ify/public/anime   (hitting public/ directly)
+// SCRIPT_NAME is always /Weeb-ify/public/index.php, so we check which prefix
+// the requested URL actually starts with and strip that one.
+$uri        = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?? '/';
+$scriptDir  = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'])), '/'); // /Weeb-ify/public
+$projectDir = preg_replace('#/public$#', '', $scriptDir);                           // /Weeb-ify
+
+$startsWith = fn(string $prefix): bool =>
+    $prefix !== '' && ($uri === $prefix || str_starts_with($uri, $prefix . '/'));
+
+if ($startsWith($scriptDir)) {
+    $basePath = $scriptDir;
+} elseif ($startsWith($projectDir)) {
+    $basePath = $projectDir;
+} else {
+    $basePath = '';
+}
+
+// Used by the views to build links: BASE_URL . '/anime'
+define('BASE_URL', $basePath);
+// api.php lives in the project root (outside public/)
+define('API_URL', $projectDir . '/api.php');
+
+$uri = '/' . ltrim(substr($uri, strlen($basePath)), '/');
+
+// The current page inside the site, with its query string, e.g. /profile/1/favorites?page=2
+$query = parse_url($_SERVER['REQUEST_URI'], PHP_URL_QUERY);
+define('CURRENT_PATH', $uri . ($query ? '?' . $query : ''));
+
+// ---------------------------------------------------------------------------
+// 2. Render a view from app/views, passing route params in as variables
+// ---------------------------------------------------------------------------
+function view(string $name, array $data = []): void
 {
-    global $apiBaseUrl, $publicBasePath;
-    $viewApiBaseUrl = $apiBaseUrl;
-    $viewRouteBase = $publicBasePath;
-    require dirname(__DIR__) . '/app/views/' . $name . '.php';
+    extract($data); // ['id' => '5'] becomes $id inside the view
+    require __DIR__ . "/../app/views/{$name}.php";
 }
 
-function CallDB(string $name): void
+// ---------------------------------------------------------------------------
+// Login helpers
+// ---------------------------------------------------------------------------
+// The id of the logged-in user, or null when nobody is logged in.
+// AuthController::login() sets $_SESSION['user_id'].
+function currentUserId(): ?int
 {
-    global $apiBaseUrl, $publicBasePath;
-    $viewApiBaseUrl = $apiBaseUrl;
-    $viewRouteBase = $publicBasePath;
-    require dirname(__DIR__) . '/database/' . $name . '.php';
+    return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 }
 
-$routes = [
-    'GET /' => 'home',
-    'GET /home' => 'home',
-    'GET /anime' => 'anime',
-    'GET /anime-id' => 'anime-id',
-    'GET /manga' => 'manga',
-    'GET /products' => 'products',
-    'GET /http-testing' => 'http-testing',
-    'GET /Category' => 'Category',
-    'GET /db' => 'db',
-    'GET /favorites' => 'Favs'
-
-];
-
-$viewName = $routes[$method . ' ' . $requestPath] ?? null;
-if ($viewName === null) {
-    http_response_code(404);
-    header('Content-Type: text/plain; charset=UTF-8');
-    echo 'Page not found';
+// Send the browser to another page on this site and stop.
+function redirect(string $path): void
+{
+    header('Location: ' . BASE_URL . $path);
     exit;
 }
-if ($viewName === 'Category' || $viewName === 'db') {
-    CallDB($viewName);
-} else {
-renderView($viewName);
+
+// Only allow redirects to pages on this site ("/anime"), never "//evil.com" or "https://...".
+function isSafeLocalPath(string $path): bool
+{
+    return str_starts_with($path, '/') && !str_starts_with($path, '//') && !str_contains($path, '\\');
 }
+
+// ---------------------------------------------------------------------------
+// 3. Routes  (placeholder names must match the closure parameter names)
+// ---------------------------------------------------------------------------
+$router = new Router();
+
+$router->get('/', fn() => view('home'));
+
+$router->get('/anime', fn() => view('anime'));
+
+$router->get('/anime/{id}', fn(string $id) => view('anime-id', ['id' => $id]));
+
+$router->get('/manga', fn() => view('manga'));
+
+$router->get('/manga/{id}', fn(string $id) => view('manga-id', ['id' => $id]));
+
+$router->get('/products', fn() =>view('products'));
+
+$router->post('/logout',[AuthController::class, 'LogOut']);
+
+
+// Middleware (3rd argument) runs first, in order:
+//   AuthMiddleware        - must be logged in (otherwise -> /login, then back here)
+//   GuestMiddleware       - must be logged OUT (otherwise -> /)
+//   OwnsProfileMiddleware - {user} in the URL must be you (list after AuthMiddleware)
+
+// Header "Favorites" button: logged in -> your favorites, otherwise -> log in
+$router->get('/favorites', function () {
+    redirect('/profile/' . currentUserId() . '/favorites');
+}, [AuthMiddleware::class]);
+
+$router->get('/profile/{user}/favorites', function (string $user) {
+    view('favorites', ['user' => $user]);
+}, [AuthMiddleware::class, OwnsProfileMiddleware::class]);
+
+$router->get('/login', fn() => view('login'), [GuestMiddleware::class]);
+
+// Login form submits here: check the password, then go back to the page that needed login (or home)
+$router->post('/login', [AuthController::class, 'login'], [GuestMiddleware::class]);
+
+$router->get('/register', fn() => view('register'), [GuestMiddleware::class]);
+
+// Sign-up form submits here: validate, check username/email, create the user
+$router->post('/register', [AuthController::class, 'register'], [GuestMiddleware::class]);
+
+
+
+
+
+// ---------------------------------------------------------------------------
+// 4. Dispatch
+// ---------------------------------------------------------------------------
+$router->dispatch($uri, $_SERVER['REQUEST_METHOD']);

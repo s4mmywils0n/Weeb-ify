@@ -61,18 +61,13 @@ $sql = "SELECT id FROM anime WHERE id = 1";
 $stmt = $pdo->prepare($sql);
 $stmt->execute();
 
-if ($stmt->rowCount() > 0) {
-    echo json_encode(['message' => 'Data already exists in the database.']);
-    exit;
-}
-
-$sql = "INSERT INTO anime (anime_id, slug, image, title, synopsis, ageRating, createdAt, endDate, episodeCount, popularityRank, showType, status, kitsu_url)
+if ($stmt->rowCount() < 0) {
+    
+    $sql = "INSERT INTO anime (anime_id, slug, image, title, synopsis, ageRating, createdAt, endDate, episodeCount, popularityRank, showType, status, kitsu_url)
         VALUES (:anime_id, :slug, :image, :title, :synopsis, :ageRating, :createdAt, :endDate, :episodeCount, :popularityRank, :showType, :status, :kitsu_url)";
 
 
 $stmt = $pdo->prepare($sql);
-
-
 
 for($i = 0; $i < $fetch; $i += $page) {
     $url = "$ch?page[limit]=$page&page[offset]=$i";
@@ -116,13 +111,102 @@ for($i = 0; $i < $fetch; $i += $page) {
                 ':status' => $attributes['status'] ?? null,
                 ':kitsu_url' => $slug ? "https://kitsu.io/anime/{$slug}" : null,
             ]);
+
+            
+    //fkn added sleep(1) to be nice to the api mother fucker stopped the load :(
+    //idk if this is gonna break it
         } catch (PDOException $e) {
             echo "Error inserting anime: " . htmlspecialchars($e->getMessage()) . "\n";
         }
     }
-    //fkn added sleep(1) to be nice to the api mother fucker stopped the load :(
-    //idk if this is gonna break it
 }
+
+
+} else {
+
+    $mh = "https://kitsu.io/api/edge/manga";
+
+
+
+    $sql = "SELECT id FROM manga WHERE id = 1";
+$stmt = $pdo->prepare($sql);
+$stmt->execute();
+
+if ($stmt->rowCount() <= 0) {
+
+$sql = "
+    INSERT INTO manga (manga_id, slug, image, title, synopsis, ageRating,
+                       createdAt, endDate, chapterCount, volumeCount,
+                       popularityRank, mangaType, serialization, status, kitsu_url)
+    VALUES (:manga_id, :slug, :image, :title, :synopsis, :ageRating,
+            :createdAt, :endDate, :chapterCount, :volumeCount,
+            :popularityRank, :mangaType, :serialization, :status, :kitsu_url)
+    ON CONFLICT (manga_id) DO NOTHING
+";
+
+$stmt = $pdo -> prepare($sql);
+
+
+for($i = 0; $i < $fetch; $i += $page) {
+    $url = "$mh?page[limit]=$page&page[offset]=$i";
+    $curlHandle = curl_init($url);
+    curl_setopt($curlHandle, CURLOPT_RETURNTRANSFER, true);
+    $manga_ = curl_exec($curlHandle);
+    $httpCode = curl_getinfo($curlHandle, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($curlHandle);
+    unset($curlHandle);
+
+    if ($manga_ === FALSE) {
+        http_response_code(502);
+        echo json_encode(['error' => 'cUrl Failed', 'detail' => $curlErr]);
+        exit;
+    }
+
+    $response = json_decode($manga_, true);
+    $data = $response['data'] ?? [];
+
+    foreach ($data as $manga) {
+        $attributes = $manga['attributes'] ?? [];
+        $slug = $attributes['slug'] ?? null;
+        $image = $attributes['posterImage']['original'] ?? null;
+
+        // Bind parameters and execute the statement
+        try {
+           $stmt->execute([
+    ':manga_id'       => $manga['id'] ?? null,
+    ':slug'           => $slug,
+    ':image'          => $image,
+    ':title'          => $attributes['canonicalTitle'] ?? null,
+    ':synopsis'       => $attributes['synopsis'] ?? null,
+    ':ageRating'      => $attributes['ageRating'] ?? null,
+    ':createdAt'      => $attributes['createdAt'] ?? null,
+    ':endDate'        => $attributes['endDate'] ?? null,
+    ':chapterCount'   => $attributes['chapterCount'] ?? null,
+    ':volumeCount'    => $attributes['volumeCount'] ?? null,
+    ':popularityRank' => $attributes['popularityRank'] ?? null,
+    ':mangaType'      => $attributes['mangaType'] ?? null,
+    ':serialization'  => $attributes['serialization'] ?? null,
+    ':status'         => $attributes['status'] ?? null,
+    ':kitsu_url'      => $slug ? "https://kitsu.io/manga/{$slug}" : null,
+    ]);
+        } catch (PDOException $e) {
+            echo "Error inserting anime: " . htmlspecialchars($e->getMessage()) . "\n";
+        }
+    }
+}
+} else {
+    echo "There is already data in both database";
+}
+}
+
+
+
+
+
+
+
+
+
 
 
 
