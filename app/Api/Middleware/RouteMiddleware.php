@@ -25,9 +25,12 @@ class RouteMiddleware implements ApiMiddleware
 
     /**
      * @param string[] $resources names, e.g. ['anime', 'manga']
+     * @param array<string,string[]> $collectionOnly resources with no /{id} route and their own
+     *        collection methods, e.g. ['favorites' => ['GET', 'POST', 'DELETE']]
      */
-    public function __construct(private array $resources)
+    public function __construct(private array $resources, private array $collectionOnly = [])
     {
+        $this->resources = [...$this->resources, ...array_keys($this->collectionOnly)];
     }
 
     public function process(ApiRequest $request, callable $next): ApiResponse
@@ -42,7 +45,14 @@ class RouteMiddleware implements ApiMiddleware
         $request->resource = $m[1];
         $request->id = isset($m[2]) && $m[2] !== '' ? (int) $m[2] : null;
 
-        $allowed = $request->id === null ? self::COLLECTION_METHODS : self::ITEM_METHODS;
+        if (isset($this->collectionOnly[$request->resource])) {
+            if ($request->id !== null) {
+                throw new ApiException(404, 'Endpoint not found');
+            }
+            $allowed = $this->collectionOnly[$request->resource];
+        } else {
+            $allowed = $request->id === null ? self::COLLECTION_METHODS : self::ITEM_METHODS;
+        }
         if (!in_array($request->method, $allowed, true)) {
             throw new ApiException(405, 'Method not allowed', ['Allow' => implode(', ', [...$allowed, 'OPTIONS'])]);
         }

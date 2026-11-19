@@ -48,6 +48,36 @@ require __DIR__ . '/partials/header.php';
         const list = document.getElementById("manga-list");
         const previousLink = document.getElementById("previous-page");
         const nextButton = document.getElementById("next-page");
+         const pageLabel = document.getElementById("page-count");
+        const pageHeading = document.getElementById("page-number");
+
+           const urlParams = new URLSearchParams(window.location.search);
+        const listParams = new URLSearchParams();
+        ["q", "showtype", "agerating", "sort", "limit"].forEach(key => {
+            const value = urlParams.get(key);
+            if (value) listParams.set(key, value);
+        });
+
+          // ---- Where we are: the cursor for this page (from the previous Next/Previous click) ----
+        // "page" is only the number shown to the user; the cursor decides which anime load.
+        const after = urlParams.get("after");
+        const before = urlParams.get("before");
+        const pageNumber = (after || before) ? Math.max(1, parseInt(urlParams.get("page"), 10) || 1) : 1;
+        pageLabel.textContent = `Page ${pageNumber}`;
+        pageHeading.textContent = `Page ${pageNumber}`;
+
+        // URL of this list at another position: { after: cursor } or { before: cursor }
+        function listUrl(position, page) {
+            const params = new URLSearchParams(listParams);
+            Object.entries(position).forEach(([key, value]) => params.set(key, value));
+            if (page > 1) params.set("page", String(page));
+            return `${BASE_URL}/manga?${params.toString()}`;
+        }
+
+        function setLink(link, url) {
+            link.href = url || "#";
+            link.setAttribute("aria-disabled", url ? "false" : "true");
+        }
 
         function pageUrl(page) {
             const params = new URLSearchParams(window.location.search);
@@ -68,43 +98,74 @@ require __DIR__ . '/partials/header.php';
             addText(list, "p", "status-message", message);
         }
 
-        function renderRecord(record) {
-            const card = document.createElement("article");
-            card.className = "manga-card";
-
-            const poster = document.createElement("div");
-            poster.className = "poster";
-            const posterCopy = document.createElement("div");
-            posterCopy.className = "poster-copy";
-            addText(posterCopy, "span", "poster-label", "Manga");
-            addText(posterCopy, "span", "poster-title", record.title || "Untitled manga");
-            poster.appendChild(posterCopy);
-
-            card.appendChild(poster);
-            const copy = document.createElement("div");
-            copy.className = "card-copy";
-            addText(copy, "h2", "", record.title || "Untitled manga");
-
-            const author = typeof record.author === "string" && record.author.trim()
-                ? record.author.trim()
-                : "Author unknown";
-            addText(copy, "p", "card-meta", author);
-
-            const details = [];
-            if (record.number_of_volumes !== null && record.number_of_volumes !== undefined) {
-                details.push(`${record.number_of_volumes} ${Number(record.number_of_volumes) === 1 ? "volume" : "volumes"}`);
+       function renderRecord(record) {
+      const hasValidId = Number.isInteger(Number(record.id)) && Number(record.id) > 0;   
+     const card = document.createElement(hasValidId ? "a" : "article");
+    card.className = "anime-card";
+    if (hasValidId) {
+                // Keep the list position so "Back to anime" returns to this exact page
+                const params = new URLSearchParams(listParams);
+                if (after) params.set("after", after);
+                if (before) params.set("before", before);
+                if (pageNumber > 1) params.set("page", String(pageNumber));
+                const query = params.toString();
+                card.href = `${BASE_URL}/manga/${Number(record.id)}${query ? "?" + query : ""}`;
+                card.setAttribute("aria-label", `View details for ${record.title || "this manga"}`);
             }
-            if (record.number_of_chapters !== null && record.number_of_chapters !== undefined) {
-                details.push(`${record.number_of_chapters} ${Number(record.number_of_chapters) === 1 ? "chapter" : "chapters"}`);
-            }
-            if (record.year_published) details.push(String(record.year_published));
-            if (record.status) details.push(record.status);
-            if (record.genre) details.push(record.genre);
-            if (details.length > 0) addText(copy, "p", "card-meta", details.join(" · "));
 
-            card.appendChild(copy);
-            list.appendChild(card);
-        }
+    const poster = document.createElement("div");
+    poster.className = "poster";
+
+    const imageUrl = typeof record.image === "string" && /^https?:\/\//i.test(record.image.trim())
+        ? record.image.trim()
+        : "";
+
+    if (imageUrl) {
+        const img = document.createElement("img");
+        img.src = imageUrl;
+        img.alt = record.title ? `${record.title} poster` : "Manga poster";
+        img.loading = "lazy";
+        img.onerror = () => {
+            img.remove();
+            const fallback = document.createElement("div");
+            fallback.className = "poster-copy";
+            addText(fallback, "span", "poster-label", "Manga");
+            addText(fallback, "span", "poster-title", record.title || "Untitled manga");
+            poster.appendChild(fallback);
+        };
+        poster.appendChild(img);
+    } else {
+        const posterCopy = document.createElement("div");
+        posterCopy.className = "poster-copy";
+        addText(posterCopy, "span", "poster-label", "Manga");
+        addText(posterCopy, "span", "poster-title", record.title || "Untitled manga");
+        poster.appendChild(posterCopy);
+    }
+
+    card.appendChild(poster);
+    const copy = document.createElement("div");
+    copy.className = "card-copy";
+    addText(copy, "h2", "", record.title || "Untitled manga");
+
+    const details = [];
+    if (record.volumecount !== null && record.volumecount !== undefined) {
+        details.push(`${record.volumecount} ${Number(record.volumecount) === 1 ? "volume" : "volumes"}`);
+    }
+    if (record.chaptercount !== null && record.chaptercount !== undefined) {
+        details.push(`${record.chaptercount} ${Number(record.chaptercount) === 1 ? "chapter" : "chapters"}`);
+    }
+    if (record.status) details.push(record.status);
+    if (record.mangatype) details.push(record.mangatype);
+    if (record.serialization) details.push(record.serialization);
+    if (details.length > 0) addText(copy, "p", "card-meta", details.join(" · "));
+
+    if (Array.isArray(record.genres) && record.genres.length > 0) {
+        addText(copy, "p", "card-meta", record.genres.join(" · "));
+    }
+
+    card.appendChild(copy);
+    list.appendChild(card);
+}
 
         previousLink.href = currentPage > 1 ? pageUrl(currentPage - 1) : "#";
         previousLink.setAttribute("aria-disabled", currentPage > 1 ? "false" : "true");

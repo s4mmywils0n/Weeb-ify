@@ -23,3 +23,4 @@ require_once __DIR__ . '/Middleware/RouteMiddleware.php';
 require_once __DIR__ . '/Middleware/JsonBodyMiddleware.php';
 
 require_once __DIR__ . '/Controllers/ResourceController.php';
+require_once __DIR__ . '/Controllers/FavoritesController.php';

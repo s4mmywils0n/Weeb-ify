@@ -27,13 +27,13 @@ return [
             ],
             'required' => ['title'],
         ],
-        // NOTE: there is no manga table in the live database yet (see database/schema.sql),
-        // so these requests return a 500 until it is created.
+        // Kitsu-imported manga table (same columns main's api.php and manga pages use)
         'manga' => [
             'table'    => 'manga',
             'fields'   => [
-                'title', 'author', 'year_published', 'number_of_volumes',
-                'number_of_chapters', 'genre', 'status',
+                'manga_id', 'slug', 'image', 'title', 'synopsis', 'agerating',
+                'createdat', 'enddate', 'chaptercount', 'volumecount',
+                'popularityrank', 'mangatype', 'serialization', 'status', 'kitsu_url',
             ],
             'required' => ['title'],
         ],

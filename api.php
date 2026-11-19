@@ -26,8 +26,14 @@ ini_set('display_errors', '0');
 
 require_once __DIR__ . '/app/Api/bootstrap.php';
 
+// The website's login session (AuthController sets $_SESSION['user_id']); /favorites needs it.
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 use App\Api\ApiRequest;
 use App\Api\ApiResponse;
+use App\Api\Controllers\FavoritesController;
 use App\Api\Controllers\ResourceController;
 use App\Api\Logger;
 use App\Api\Middleware\ContentNegotiationMiddleware;
@@ -55,6 +61,7 @@ $controller = new ResourceController(
     $animeFilters,
     $config['items_per_page']
 );
+$favorites = new FavoritesController(new PDOService());
 
 $pipeline = new Pipeline(
     [
@@ -63,10 +70,15 @@ $pipeline = new Pipeline(
         new CorsMiddleware($config['cors_origins']),
         new ErrorHandlerMiddleware($logger),
         new ContentNegotiationMiddleware(),
-        new RouteMiddleware(array_keys($config['resources'])),
+        new RouteMiddleware(
+            array_keys($config['resources']),
+            ['favorites' => ['GET', 'POST', 'DELETE']]
+        ),
         new JsonBodyMiddleware($config['max_body_bytes']),
     ],
-    [$controller, 'handle']
+    fn(ApiRequest $request): ApiResponse => $request->resource === 'favorites'
+        ? $favorites->handle($request)
+        : $controller->handle($request)
 );
 
 try {
