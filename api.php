@@ -20,7 +20,12 @@ if (file_exists($envPath)) {
 }
 $dsn = "pgsql:host=$host;port=$port;dbname=$database";
 
-
+function sendJson(int $status, mixed $body): never
+{
+    http_response_code($status);
+    echo json_encode($body, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    exit;
+}
 
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
@@ -197,147 +202,109 @@ if ($table === 'favorites') {
     $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 
     if ($userId === null) {
-        http_response_code(401);
-        echo json_encode(["error" => "Login required"]);
-        exit;
+        sendJson(401, ["error" => "Login required"]);
     }
 
-    // Read the JSON body once, for the verbs that carry one.
-    $body = [];
-    if (in_array($method, ['POST', 'PUT', 'PATCH'], true)) {
-        $decoded = json_decode((string) file_get_contents('php://input'), true);
-        $body = is_array($decoded) && !array_is_list($decoded) ? $decoded : [];
-    }
-
-    // ---- Which kind of favorite is this request about? ----
     $type = is_string($_GET['type'] ?? null) ? strtolower(trim($_GET['type'])) : '';
 
     if ($type === '') {
-        $type = array_key_exists('manga_id', $_GET) || array_key_exists('manga_id', $body)
-            ? 'manga'
-            : 'anime';
+        $type = array_key_exists('manga_id', $_GET) ? 'manga' : 'anime';
     }
 
     if (!in_array($type, ['anime', 'manga'], true)) {
-        http_response_code(400);
-        echo json_encode(["error" => "Invalid type. Allowed: anime, manga"]);
-        exit;
+        sendJson(400, ["error" => "Invalid type. Allowed: anime, manga"]);
     }
 
-    // Everything that differs between the two kinds lives in this config.
-    $target = $type === 'manga'
-        ? [
-            'column' => 'manga_id',
-            'table'  => 'public.manga',
-            'alias'  => 'm',
-            'detail' => 'm.id, m.title, m.image, m.chaptercount AS chapter_count, '
-                      . 'm.volumecount AS volume_count, m.mangatype AS manga_type, '
-                      . 'm.serialization, m.status, m.agerating AS age_rating, '
-                      . 'm.popularityrank AS popularity_rank',
-        ]
-        : [
-            'column' => 'anime_id',
-            'table'  => 'public.anime',
-            'alias'  => 'a',
-            'detail' => 'a.id, a.title, a.image, a.episode_count, '
-                      . 'a.status, a.show_type, a.age_rating, a.popularity_rank',
-        ];
+    $column = $type === 'manga' ? 'manga_id' : 'anime_id';
 
-    $column = $target['column'];
-    $alias  = $target['alias'];
-
-    // The id in question, accepted from the query string or from the JSON body.
     $targetId = filter_var(
-        $_GET[$column] ?? $body[$column] ?? null,
+        $_GET[$column] ?? null,
         FILTER_VALIDATE_INT,
         ['options' => ['min_range' => 1]]
     );
     $targetId = ($targetId === false || $targetId === null) ? null : (int) $targetId;
 
-    // ---- GET: "is this one a favorite?" when an id is given, otherwise the list ----
+    // ---- GET: list the current user's favorites of this type ----
     if ($method === 'GET') {
-        if ($targetId !== null) {
-            $stmt = $pdo->prepare(
-                "SELECT $column FROM public.favorites
-                  WHERE user_id = :user_id AND $column = :target_id
-                  LIMIT 1"
-            );
-            $stmt->execute([':user_id' => $userId, ':target_id' => $targetId]);
-            echo json_encode(["isFavorite" => (bool) $stmt->fetch()]);
-            exit;
+        if ($type === 'manga') {
+            $stmt = $pdo->prepare("
+                SELECT f.id, f.manga_id, f.created_at,
+                       m.title, m.image,
+                       m.chapter_count, m.volume_count,
+                       m.manga_type, m.serialization, m.status
+                FROM public.favorites f
+                LEFT JOIN public.manga m ON m.manga_id = f.manga_id
+                WHERE f.user_id = :uid AND f.manga_id IS NOT NULL
+                ORDER BY f.created_at DESC
+            ");
+        } else {
+            $stmt = $pdo->prepare("
+                SELECT f.id, f.anime_id, f.created_at,
+                       a.title, a.image,
+                       a.episode_count, a.show_type,
+                       a.age_rating, a.popularity_rank, a.status
+                FROM public.favorites f
+                LEFT JOIN public.anime a ON a.anime_id = f.anime_id
+                WHERE f.user_id = :uid AND f.anime_id IS NOT NULL
+                ORDER BY f.created_at DESC
+            ");
         }
 
         try {
-            $stmt = $pdo->prepare(
-                "SELECT f.$column, {$target['detail']}
-                   FROM public.favorites f
-                   JOIN {$target['table']} $alias ON $alias.$column = f.$column
-                  WHERE f.user_id = :user_id
-                  ORDER BY f.created_at DESC"
-            );
-            $stmt->execute([':user_id' => $userId]);
-            $records = $stmt->fetchAll();
+            $stmt->execute([':uid' => $userId]);
+            sendJson(200, $stmt->fetchAll());
         } catch (PDOException $e) {
-            error_log("Favorites list ($type) failed: " . $e->getMessage());
-            http_response_code(500);
-            echo json_encode(["error" => "Could not load favorites."]);
-            exit;
+            error_log("Favorites list failed ($type): " . $e->getMessage());
+            sendJson(500, ["error" => "Could not load favorites."]);
         }
-
-        echo json_encode($records);
-        exit;
     }
 
-    // ---- POST: add it (idempotent, so a double press is not an error) ----
+    // ---- POST: add (idempotent) ----
     if ($method === 'POST') {
-        if ($targetId === null) {
-            http_response_code(400);
-            echo json_encode(["error" => "A valid $column is required"]);
-            exit;
+        $body = json_decode((string) file_get_contents('php://input'), true);
+        if (!is_array($body) || array_is_list($body)) {
+            $body = [];
+        }
+
+        $postedId = filter_var(
+            $body[$column] ?? $_GET[$column] ?? null,
+            FILTER_VALIDATE_INT,
+            ['options' => ['min_range' => 1]]
+        );
+        $postedId = ($postedId === false || $postedId === null) ? null : (int) $postedId;
+
+        if ($postedId === null) {
+            sendJson(400, ["error" => "A valid $column is required"]);
         }
 
         try {
-            // No ON CONFLICT target: this works whether uniqueness comes from the plain
-            // (user_id, anime_id) key or from the partial manga index.
             $stmt = $pdo->prepare(
                 "INSERT INTO public.favorites (user_id, $column)
                  VALUES (:user_id, :target_id)
                  ON CONFLICT DO NOTHING"
             );
-            $stmt->execute([':user_id' => $userId, ':target_id' => $targetId]);
+            $stmt->execute([':user_id' => $userId, ':target_id' => $postedId]);
         } catch (PDOException $e) {
-            // The CHECK (one target per row), the foreign key and a missing column all
-            // land here. Map the SQL state to something actionable; the real message
-            // stays in the log.
-            error_log("Favorites insert ($type $targetId) failed: " . $e->getMessage());
+            error_log("Favorites insert ($type $postedId) failed: " . $e->getMessage());
 
             [$status, $message] = match ((string) $e->getCode()) {
-                '42703' => [500, "The favorites table has no $column column yet."],
-                '23502' => [500, "The favorites table still requires anime_id."],
+                '42703' => [500, "The favorites table has no $column column."],
+                '23502' => [500, "The favorites table still requires $column."],
                 '23503' => [404, "That $type does not exist."],
                 '23505' => [409, "That $type is already in your favorites."],
                 default => [400, "Could not save that favorite."],
             };
 
-            http_response_code($status);
-            echo json_encode([
-                "error"    => $message,
-                "sqlstate" => (string) $e->getCode(),
-            ]);
-            exit;
+            sendJson($status, ["error" => $message, "sqlstate" => (string) $e->getCode()]);
         }
 
-        http_response_code(201);
-        echo json_encode(["success" => true]);
-        exit;
+        sendJson(201, ["success" => true]);
     }
 
-    // ---- DELETE: remove it (also idempotent) ----
+    // ---- DELETE: remove (idempotent) ----
     if ($method === 'DELETE') {
         if ($targetId === null) {
-            http_response_code(400);
-            echo json_encode(["error" => "A valid $column is required"]);
-            exit;
+            sendJson(400, ["error" => "A valid $column is required"]);
         }
 
         $stmt = $pdo->prepare(
@@ -346,16 +313,16 @@ if ($table === 'favorites') {
         );
         $stmt->execute([':user_id' => $userId, ':target_id' => $targetId]);
 
-        echo json_encode(["success" => true]);
-        exit;
+        if ($stmt->rowCount() === 0) {
+            sendJson(404, ["error" => "Favorite not found"]);
+        }
+
+        sendJson(200, ["success" => true]);
     }
 
-    // PUT / PATCH are meaningless for a join of two ids; stop here instead of
-    // falling through to the generic single-row handler below.
-    http_response_code(405);
+    // PUT / PATCH make no sense for a (user, target) pair.
     header("Allow: GET, POST, DELETE, OPTIONS");
-    echo json_encode(["error" => "Method not allowed"]);
-    exit;
+    sendJson(405, ["error" => "Method not allowed"]);
 }
 
 // 7. GET all records or POST a new record
