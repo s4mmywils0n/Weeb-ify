@@ -2,7 +2,7 @@ openapi: 3.0.3
 
 info:
   title: Weeb Database API
-  description: REST API for managing anime and manga records.
+  description: REST API for managing anime and manga records and user favorites.
   version: 1.0.0
 
 servers:
@@ -14,8 +14,36 @@ tags:
     description: Operations for anime records
   - name: Manga
     description: Operations for manga records
+  - name: Favorites
+    description: Operations for anime favorites
 
 paths:
+  /favorites:
+    post:
+      tags:
+        - Favorites
+      summary: Add an anime to a user's favorites
+      operationId: addFavorite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FavoriteInput"
+      responses:
+        "201":
+          description: Favorite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Favorite"
+        "200":
+          description: Anime is already in this user's favorites
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "405":
+          description: Only POST is allowed
+
   /anime:
     get:
       tags:
@@ -538,6 +566,37 @@ components:
         status:
           type: string
           nullable: true
+
+    Favorite:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        anime_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - user_id
+        - anime_id
+
+    FavoriteInput:
+      type: object
+      required:
+        - user_id
+        - anime_id
+      properties:
+        user_id:
+          type: integer
+          minimum: 1
+        anime_id:
+          type: string
+          minLength: 1
+          maxLength: 255
 
     Error:
       type: object

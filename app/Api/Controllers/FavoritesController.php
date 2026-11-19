@@ -18,29 +18,28 @@ use PDOException;
  *   GET    /favorites?type=manga         the user's manga favorites
  *   GET    /favorites?anime_id=12        {"isFavorite": true|false}   (or ?manga_id=)
  *   POST   /favorites   {"anime_id": 12} add it      (or {"manga_id": 12})  - idempotent
- *   DELETE /favorites?anime_id=12        remove it   (or ?manga_id=)        - idempotent
+ *   DELETE /favorites?anime_id=12        remove it   (or ?manga_id=)        - 404 if it wasn't one
  *
  * Every query is scoped to $_SESSION['user_id'], so nobody can read or change
  * another user's favorites. No session -> 401.
  */
 class FavoritesController
 {
+    // id = the anime/manga row id (the favorites page links to /anime/{id} with it).
     private const TARGETS = [
         'anime' => [
             'column' => 'anime_id',
             'table'  => 'public.anime',
             'alias'  => 'a',
-            'detail' => 'a.id, a.title, a.image, a.episode_count, a.status, a.show_type, '
-                      . 'a.age_rating, a.popularity_rank',
+            'detail' => 'a.id, a.title, a.image, a.episode_count, a.show_type, '
+                      . 'a.age_rating, a.popularity_rank, a.status',
         ],
         'manga' => [
             'column' => 'manga_id',
             'table'  => 'public.manga',
             'alias'  => 'm',
-            'detail' => 'm.id, m.title, m.image, m.chaptercount AS chapter_count, '
-                      . 'm.volumecount AS volume_count, m.mangatype AS manga_type, '
-                      . 'm.serialization, m.status, m.agerating AS age_rating, '
-                      . 'm.popularityrank AS popularity_rank',
+            'detail' => 'm.id, m.title, m.image, m.chapter_count, m.volume_count, '
+                      . 'm.manga_type, m.serialization, m.status',
         ],
     ];
 
@@ -73,11 +72,13 @@ class FavoritesController
     {
         $column = $target['column'];
         $alias = $target['alias'];
+        // LEFT JOIN: a favorite still shows if its anime/manga row is missing.
+        // IS NOT NULL: anime and manga favorites share the table; keep only this kind.
         $stmt = $this->pdo()->prepare(
-            "SELECT f.$column, {$target['detail']}
+            "SELECT f.$column, f.created_at, {$target['detail']}
                FROM public.favorites f
-               JOIN {$target['table']} $alias ON $alias.$column = f.$column
-              WHERE f.user_id = :user_id
+               LEFT JOIN {$target['table']} $alias ON $alias.$column = f.$column
+              WHERE f.user_id = :user_id AND f.$column IS NOT NULL
               ORDER BY f.created_at DESC"
         );
         $stmt->execute([':user_id' => $userId]);
@@ -102,10 +103,17 @@ class FavoritesController
                  ON CONFLICT DO NOTHING"
             );
             $stmt->execute([':user_id' => $userId, ':target_id' => $targetId]);
-        } catch (PDOException) {
-            // Unknown id (foreign key) or CHECK constraint -> 400 rather than 500.
-            // ErrorHandlerMiddleware is not involved, so log nothing sensitive here.
-            throw new ApiException(400, "That $column could not be favorited.");
+        } catch (PDOException $e) {
+            $type = $column === 'manga_id' ? 'manga' : 'anime';
+            match ((string) $e->getCode()) {
+                '23503' => throw new ApiException(404, "That $type does not exist."),            // foreign key
+                '23505' => throw new ApiException(409, "That $type is already in your favorites."), // unique
+                '23514' => throw new ApiException(400, "That $type could not be favorited."),      // CHECK
+                // Anything else (e.g. a missing column) is a server problem: rethrow so
+                // ErrorHandlerMiddleware logs the details under the request id and the
+                // client only gets a safe 500 (no SQL state or message).
+                default => throw $e,
+            };
         }
         return new ApiResponse(201, ['success' => true]);
     }
@@ -116,6 +124,10 @@ class FavoritesController
             "DELETE FROM public.favorites WHERE user_id = :user_id AND $column = :target_id"
         );
         $stmt->execute([':user_id' => $userId, ':target_id' => $targetId]);
+
+        if ($stmt->rowCount() === 0) {
+            throw new ApiException(404, 'Favorite not found');
+        }
         return new ApiResponse(200, ['success' => true]);
     }
 

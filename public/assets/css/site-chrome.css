@@ -1512,3 +1512,52 @@ h1 span {
 .content {
   display: none;
 }
+ .coming-soon {
+    min-height: 520px;
+    display: grid;
+    place-items: center;
+  }
+
+  .coming-soon-sign {
+    width: min(680px, 100%);
+    padding: clamp(38px, 8vw, 72px) clamp(24px, 7vw, 64px);
+    border: 1px solid #d6a8ff55;
+    border-radius: 24px;
+    text-align: center;
+    background:
+      radial-gradient(circle at 50% 0, #d6a8ff18, transparent 55%),
+      #211d2ccc;
+    box-shadow:
+      0 24px 60px #00000045,
+      inset 0 1px 0 #ffffff12;
+  }
+
+  .coming-soon-icon {
+    width: 72px;
+    height: 72px;
+    display: grid;
+    place-items: center;
+    margin: 0 auto 24px;
+    border: 1px solid #d6a8ff55;
+    border-radius: 50%;
+    color: #d6a8ff;
+    background: #d6a8ff12;
+  }
+
+  .coming-soon-sign h1 {
+    margin: 0 0 18px;
+  }
+
+  .coming-soon-sign p {
+    max-width: 470px;
+    margin: 0 auto;
+    color: var(--muted);
+    font-size: 1.05rem;
+    line-height: 1.7;
+  }
+
+  @media (max-width: 560px) {
+    .coming-soon {
+      min-height: 420px;
+    }
+  }

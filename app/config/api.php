@@ -27,13 +27,13 @@ return [
             ],
             'required' => ['title'],
         ],
-        // Kitsu-imported manga table (same columns main's api.php and manga pages use)
+        // Kitsu-imported manga table, snake_case columns (renamed on main in "fixed manga")
         'manga' => [
             'table'    => 'manga',
             'fields'   => [
-                'manga_id', 'slug', 'image', 'title', 'synopsis', 'agerating',
-                'createdat', 'enddate', 'chaptercount', 'volumecount',
-                'popularityrank', 'mangatype', 'serialization', 'status', 'kitsu_url',
+                'manga_id', 'slug', 'image', 'title', 'synopsis', 'age_rating',
+                'created_at', 'end_date', 'chapter_count', 'volume_count',
+                'popularity_rank', 'manga_type', 'serialization', 'status', 'kitsu_url',
             ],
             'required' => ['title'],
         ],
