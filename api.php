@@ -184,13 +184,6 @@ if (!preg_match('#^/(anime|manga|user|favorites)(?:/([0-9]+))?/?$#', $path, $mat
     exit;
 }
 
-function sendJson(int $status, mixed $body): never
-{
-    http_response_code($status);
-    echo json_encode($body, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
-    exit;
-}
-
 $table = $matches[1];
 $id = isset($matches[2]) && $matches[2] !== ''
     ? (int) $matches[2]
