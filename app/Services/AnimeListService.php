@@ -16,6 +16,7 @@ use PDO;
  *   using the sort value + id of the last row on the current page.
  *
  * Query parameters (all optional):
+ *   q=naruto                 title search (case-insensitive, max 100 characters)
  *   showtype=TV  agerating=PG  category[]=Action&category[]=Comedy  sort=title_asc
  *   limit=5|10|20            (default 20)
  *   after=<cursor>           next page   (cursor from the X-Next-Cursor header)
@@ -126,11 +127,22 @@ class AnimeListService
         return $limit;
     }
 
-    // showtype, agerating, category[]  ->  [where clauses, bound values]
+    // q, showtype, agerating, category[]  ->  [where clauses, bound values]
     private function filters(array $query): array
     {
         $where = [];
         $values = [];
+
+        // ?q=naruto  ->  title contains the text, ignoring case
+        $search = $this->string($query, 'q');
+        if ($search !== '') {
+            if (mb_strlen($search) > 100) {
+                throw new InvalidArgumentException('Search text is too long (max 100 characters).');
+            }
+            // "!" is the escape character, so 50% searches for "50%" and not "50 + anything"
+            $where[] = "title ILIKE :q ESCAPE '!'";
+            $values[':q'] = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search) . '%';
+        }
 
         foreach (['showtype', 'agerating'] as $filter) {
             $value = $this->string($query, $filter);

@@ -152,6 +152,18 @@ class AccountModel
         return $row === false ? null : $row;
     }
 
+    /**
+     * Is this user an admin? Always read from the database (not the session), so taking
+     * admin away from someone takes effect on their very next request.
+     * Unknown user ids are simply not admins.
+     */
+    public function isAdmin(int $userId): bool
+    {
+        $stmt = $this->pdo()->prepare('SELECT is_admin FROM public."user" WHERE id = :id');
+        $stmt->execute([':id' => $userId]);
+        return filter_var($stmt->fetchColumn(), FILTER_VALIDATE_BOOLEAN);
+    }
+
     public function createAccount(string $firstName, string $username, string $email, string $phoneNumber, string $password): void
     {
         $this->firstName = $firstName;

@@ -1,4 +1,22 @@
 <?php
+// Never show PHP errors, warnings or notices to visitors: they go to the PHP error log
+// instead (log_errors), whatever php.ini says. Remove these lines only for local debugging.
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
+ini_set('log_errors', '1');
+
+// Anything not caught below: log it and answer with a generic JSON error, so clients
+// never get an empty body or PHP's own error text.
+set_exception_handler(function (Throwable $e): void {
+    error_log('api.php: ' . $e);
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=UTF-8');
+    }
+    echo json_encode(["error" => "Something went wrong. Please try again."]);
+});
+
 // 1. Database Configuration
 
 $envPath = __DIR__ . '/.env';
@@ -16,7 +34,11 @@ if (file_exists($envPath)) {
     $user = $env['user'];
     $password = $env['password'];
 } else {
-    die("Error: .env file not found.");
+    error_log('api.php: .env file not found in ' . __DIR__);
+    http_response_code(500);
+    header('Content-Type: application/json; charset=UTF-8');
+    echo json_encode(["error" => "Server configuration error."]);
+    exit;
 }
 $dsn = "pgsql:host=$host;port=$port;dbname=$database";
 
@@ -25,6 +47,15 @@ function sendJson(int $status, mixed $body): never
     http_response_code($status);
     echo json_encode($body, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
+}
+
+// Never send password hashes out of the API, not even to admins.
+function withoutSecrets(mixed $row): mixed
+{
+    if (is_array($row)) {
+        unset($row['password']);
+    }
+    return $row;
 }
 
 $options = [
@@ -65,8 +96,8 @@ $method = $_SERVER['REQUEST_METHOD'];
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 
-// Base path: /Web-Services/api.php
-$apiPosition = strpos($uri, '/Weeb-ify/api.php');
+// Base path: /Weeb-ify/api.php under Apache, or /api.php under php -S -t public
+$apiPosition = strpos($uri, '/api.php');
 
 if ($apiPosition === false) {
     http_response_code(404);
@@ -76,7 +107,7 @@ if ($apiPosition === false) {
 
 $path = substr(
     $uri,
-    $apiPosition + strlen('/Weeb-ify/api.php')
+    $apiPosition + strlen('/api.php')
 );
 
 if (preg_match('#^/favorites/?$#', $path) === 1) {
@@ -138,43 +169,17 @@ if (preg_match('#^/favorites/?$#', $path) === 1) {
 }
 
 // 5. Define the allowed resources and fields
+// anime / manga: the snake_case columns from app/config/catalogue-fields.php (shared with the admin page)
+$catalogueFields = require __DIR__ . '/app/config/catalogue-fields.php';
 $resources = [
-    'anime' => [
-        'anime_id',
-        'slug',
-        'image',
-        'title',
-        'synopsis',
-        'agerating',
-        'createdat',
-        'enddate',
-        'episodecount',
-        'popularityrank',
-        'showtype',
-        'status',
-        'kitsu_url'
-        ],  
+    'anime' => $catalogueFields['anime']['fields'],
     'favorites'=>[
               'user_id',
             'anime_id' 
         ],
-     'manga' => [
-        'manga_id',
-        'slug',
-        'image',
-        'title',
-        'synopsis',
-        'agerating',
-        'createdat',
-        'enddate',
-        'chaptercount',
-        'volumecount',
-        'popularityrank',
-        'mangatype',
-        'serialization',
-        'status',
-        'kitsu_url',
-    ]
+    'manga' => $catalogueFields['manga']['fields'],
+    // /user is admin-only (see below) and read-only through the API: no writable fields
+    'user' => [],
 ];
 
 // 6. Match the requested endpoint (filter)
@@ -190,6 +195,25 @@ $id = isset($matches[2]) && $matches[2] !== ''
     : null;
 
 $allowedFields = $resources[$table];
+
+// Admin only (a logged-in user (401) whose user.is_admin is true (403)):
+//   - anime / manga writes. Reads of the catalogue stay public.
+//   - everything on /user (it holds emails and password hashes), reads included.
+// is_admin is read from the database on every request, so removing someone's admin flag
+// takes effect immediately. The session key is the one AuthController::login() sets.
+$catalogueWrite = in_array($table, ['anime', 'manga'], true)
+    && in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true);
+if ($catalogueWrite || $table === 'user') {
+    $adminUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+    if ($adminUserId === null) {
+        sendJson(401, ["error" => "Login required"]);
+    }
+    $adminStmt = $pdo->prepare('SELECT is_admin FROM public."user" WHERE id = :id');
+    $adminStmt->execute([':id' => $adminUserId]);
+    if (!filter_var($adminStmt->fetchColumn(), FILTER_VALIDATE_BOOLEAN)) {
+        sendJson(403, ["error" => "Admin access required"]);
+    }
+}
 
 //========================================================
 // Favorites hold one row per (user, target), where a target is either an anime or a
@@ -377,8 +401,9 @@ if ($id === null) {
         $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
             ? trim($_GET['q'])
             : '';
+        // The manga table has no author / genre columns, so search the title only
         $searchCondition = $table === 'manga' && $searchQuery !== ''
-            ? ' WHERE (title ILIKE :search_title OR author ILIKE :search_author OR genre ILIKE :search_genre)'
+            ? " WHERE title ILIKE :search_title ESCAPE '!'"
             : '';
 
         $stmt = $pdo->prepare(
@@ -387,10 +412,8 @@ if ($id === null) {
              LIMIT :limit OFFSET :offset"
         );
         if ($searchCondition !== '') {
-            $searchTerm = '%' . $searchQuery . '%';
+            $searchTerm = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $searchQuery) . '%';
             $stmt->bindValue(':search_title', $searchTerm, PDO::PARAM_STR);
-            $stmt->bindValue(':search_author', $searchTerm, PDO::PARAM_STR);
-            $stmt->bindValue(':search_genre', $searchTerm, PDO::PARAM_STR);
         }
         $stmt->bindValue(':limit', $itemsPerPage, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
@@ -398,7 +421,7 @@ if ($id === null) {
         $records = $stmt->fetchAll();
 
         http_response_code(200);
-        echo json_encode($records);
+        echo json_encode($table === 'user' ? array_map('withoutSecrets', $records) : $records);
         exit;
     }
 
@@ -476,7 +499,7 @@ if ($id === null) {
         // $stmt->execute([':id' => $newId]);
 
         http_response_code(201);
-        echo json_encode($stmt->fetch());
+        echo json_encode(withoutSecrets($stmt->fetch()));
         exit;
     }
 
@@ -502,7 +525,7 @@ if ($method === 'GET') {
     }
 
     http_response_code(200);
-    echo json_encode($record);
+    echo json_encode(withoutSecrets($record));
     exit;
 }
 
@@ -598,7 +621,8 @@ if ($method === 'PUT' || $method === 'PATCH') {
     $setParts = [];
 
     foreach (array_keys($input) as $field) {
-        $setParts[] = "`$field` = :$field";
+        // Postgres quotes identifiers with "...", not MySQL backticks (fields are allowlisted)
+        $setParts[] = "\"$field\" = :$field";
     }
 
     $sql = "UPDATE public.$table
@@ -621,7 +645,7 @@ if ($method === 'PUT' || $method === 'PATCH') {
     $stmt->execute([':id' => $id]);
 
     http_response_code(200);
-    echo json_encode($stmt->fetch());
+    echo json_encode(withoutSecrets($stmt->fetch()));
     exit;
 }
 

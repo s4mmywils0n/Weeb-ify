@@ -70,6 +70,9 @@ require __DIR__ . '/partials/header.php';
                 Add to favorites
             </button>
             <p id="favorite-message" class="favorite-message" role="status" aria-live="polite"></p>
+            <?php if ($recordId !== null && currentUserIsAdmin()): ?>
+            <a class="login-link login-link-secondary" href="<?= BASE_URL ?>/admin?type=manga&amp;edit=<?= (int) $recordId ?>">Edit (admin)</a>
+            <?php endif; ?>
         </div>
 
         <section id="record-content" aria-live="polite">

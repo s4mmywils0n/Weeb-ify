@@ -8,7 +8,7 @@
  *
  * Optional variables (set them before the require):
  *   $title             <title> text                       default 'Weebi:fy'
- *   $active            highlighted nav item: home | anime | manga | products | favorites
+ *   $active            highlighted nav item: home | anime | manga | products | favorites | admin
  *   $searchAction      where the header search submits    default BASE_URL . '/anime'
  *   $searchQuery       value to show in the search box    default ''
  *   $searchPlaceholder search box placeholder             default 'Search your collection'
@@ -34,7 +34,8 @@ $loggedInName = $loggedInUserId !== null
     : null;
 
 
-//make the logic for the header search
+// Live anime suggestions only when the search goes to the anime list (not manga / favorites)
+$animeSearch = $searchAction === BASE_URL . '/anime';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -45,6 +46,9 @@ $loggedInName = $loggedInUserId !== null
     <title><?= $e($title) ?></title>
     <?= $extraHead ?>
     <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/site-chrome.css">
+    <?php if ($animeSearch): ?>
+    <script src="<?= BASE_URL ?>/assets/js/header-search.js" defer></script>
+    <?php endif; ?>
 </head>
 <body>
     <header class="site-header">
@@ -56,9 +60,15 @@ $loggedInName = $loggedInUserId !== null
             <a href="<?= BASE_URL ?>/products"<?= $current('products') ?>>Products</a>
             <!-- /favorites checks login: your favorites if logged in, otherwise the log in page -->
             <a href="<?= BASE_URL ?>/favorites"<?= $current('favorites') ?>>Favorites</a>
+            <?php if ($loggedInUserId !== null && currentUserIsAdmin()): ?>
+            <a href="<?= BASE_URL ?>/admin"<?= $current('admin') ?>>Admin</a>
+            <?php endif; ?>
         </nav>
 
-        <form class="header-search" role="search" action="<?= $e($searchAction) ?>" method="get">
+        <form class="header-search" role="search" action="<?= $e($searchAction) ?>" method="get"<?php if ($animeSearch): ?>
+              data-suggest-url="<?= $e(API_URL . '/anime') ?>"
+              data-results-url="<?= $e(BASE_URL . '/anime') ?>"
+              data-detail-url="<?= $e(BASE_URL . '/anime') ?>"<?php endif; ?>>
             <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none">
                 <circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8" />
                 <path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
