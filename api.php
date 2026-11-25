@@ -13,12 +13,14 @@ declare(strict_types=1);
  *   4. ErrorHandler      any error from here down -> safe {"error", "requestId"} response
  *   5. ContentNegotiation  Accept header -> JSON / XML / YAML, otherwise 406
  *   6. Route             known resource + id? allowed method? otherwise 404 / 405
- *   7. JsonBody          POST/PUT/PATCH: Content-Type (415), size (413), valid JSON object (400)
+ *   7. AdminWrite        POST/PUT/PATCH/DELETE on anime/manga: logged out 401, not admin 403
+ *   8. JsonBody          POST/PUT/PATCH: Content-Type (415), size (413), valid JSON object (400)
  *   -> ResourceController  the actual create / read / update / delete
+ *      FavoritesController /favorites (login required, only your own favorites)
  *
  * Then ResponseWriter sends the result in the chosen format.
  * Settings (resources, allowed fields, CORS origins, log file): app/config/api.php
- * Authentication/authorization is added in Build 3.
+ * Who is logged in comes from the website's session (AuthController::login).
  */
 
 // Never print PHP errors into API responses; ErrorHandlerMiddleware logs them instead.
@@ -36,6 +38,7 @@ use App\Api\ApiResponse;
 use App\Api\Controllers\FavoritesController;
 use App\Api\Controllers\ResourceController;
 use App\Api\Logger;
+use App\Api\Middleware\AdminWriteMiddleware;
 use App\Api\Middleware\ContentNegotiationMiddleware;
 use App\Api\Middleware\CorsMiddleware;
 use App\Api\Middleware\ErrorHandlerMiddleware;
@@ -45,6 +48,7 @@ use App\Api\Middleware\RequestLoggerMiddleware;
 use App\Api\Middleware\RouteMiddleware;
 use App\Api\Pipeline;
 use App\Api\ResponseWriter;
+use App\Models\AccountModel;
 use App\Services\PDOService;
 
 $config = require __DIR__ . '/app/config/api.php';
@@ -74,6 +78,8 @@ $pipeline = new Pipeline(
             array_keys($config['resources']),
             ['favorites' => ['GET', 'POST', 'DELETE']]
         ),
+        // Writes to the catalogue need an admin: 401 logged out, 403 not admin
+        new AdminWriteMiddleware(new AccountModel(new PDOService()), array_keys($config['resources'])),
         new JsonBodyMiddleware($config['max_body_bytes']),
     ],
     fn(ApiRequest $request): ApiResponse => $request->resource === 'favorites'

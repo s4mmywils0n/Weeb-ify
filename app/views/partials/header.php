@@ -8,7 +8,7 @@
  *
  * Optional variables (set them before the require):
  *   $title             <title> text                       default 'Weebi:fy'
- *   $active            highlighted nav item: home | anime | manga | products | favorites
+ *   $active            highlighted nav item: home | anime | manga | products | favorites | admin
  *   $searchAction      where the header search submits    default BASE_URL . '/anime'
  *   $searchQuery       value to show in the search box    default ''
  *   $searchPlaceholder search box placeholder             default 'Search your collection'
@@ -52,6 +52,9 @@ $animeSearch = $searchAction === BASE_URL . '/anime';
             <a href="<?= BASE_URL ?>/products"<?= $current('products') ?>>Products</a>
             <!-- /favorites checks login: your favorites if logged in, otherwise the log in page -->
             <a href="<?= BASE_URL ?>/favorites"<?= $current('favorites') ?>>Favorites</a>
+            <?php if ($loggedIn && currentUserIsAdmin()): ?>
+            <a href="<?= BASE_URL ?>/admin"<?= $current('admin') ?>>Admin</a>
+            <?php endif; ?>
         </nav>
 
         <form class="header-search" role="search" action="<?= $e($searchAction) ?>" method="get"<?php if ($animeSearch): ?>

@@ -11,8 +11,9 @@
 -- See "Database: rebuild and reseed" in README.md for the full order.
 --
 -- Migrations: this file already includes database/migrations/001_rename_anime_columns.sql
--- (anime columns renamed from "show type" etc. to show_type etc.). A database built
--- from this file does NOT need that migration; an older one does.
+-- (anime columns renamed from "show type" etc. to show_type etc.) and
+-- 002_drop_temp_full_access.sql. A database built from this file does NOT need them;
+-- an older one does.
 --
 -- Naming notes (these must be double-quoted in SQL):
 --   user:   "user" is a reserved word; "phoneNumber" and "createdAt" are camelCase
@@ -88,10 +89,9 @@ ALTER TABLE public.favorites ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Signed-out Access" ON public.anime
     FOR SELECT TO anon USING (true);
 
--- WARNING: lets anyone with the publishable key insert/update/delete anime.
--- Marked TEMP in the live database; remove before Build 3 (security).
-CREATE POLICY "TEMP FULL ACCESS" ON public.anime
-    FOR ALL TO anon USING (true) WITH CHECK (true);
+-- The old "TEMP FULL ACCESS" policy (anyone with the publishable key could
+-- insert/update/delete anime) was dropped by migrations/002_drop_temp_full_access.sql.
+-- Anime and manga are now only changed through api.php, by admins (user.is_admin).
 
 -- -----------------------------------------------------------------------------
 -- Not in the live database:

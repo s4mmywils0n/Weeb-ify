@@ -21,6 +21,8 @@ require_once __DIR__ . '/Middleware/ErrorHandlerMiddleware.php';
 require_once __DIR__ . '/Middleware/ContentNegotiationMiddleware.php';
 require_once __DIR__ . '/Middleware/RouteMiddleware.php';
 require_once __DIR__ . '/Middleware/JsonBodyMiddleware.php';
+require_once __DIR__ . '/Middleware/AdminWriteMiddleware.php';
+require_once __DIR__ . '/../models/AccountModel.php';
 
 require_once __DIR__ . '/Controllers/ResourceController.php';
 require_once __DIR__ . '/Controllers/FavoritesController.php';

@@ -84,9 +84,21 @@ class ResourceController
             throw new ApiException(400, 'The page parameter must be an integer between 1 and 1000000');
         }
 
+        // ?q=  optional title search (case-insensitive, matches anywhere in the title).
+        // "!" is the LIKE escape character, so "50%" searches for the text "50%".
+        $rawSearch = $request->query['q'] ?? '';
+        if (!is_string($rawSearch) || mb_strlen($rawSearch) > 100) {
+            throw new ApiException(400, 'Search text must be at most 100 characters.');
+        }
+        $search = trim($rawSearch);
+        $where = $search === '' ? '' : " WHERE title ILIKE :q ESCAPE '!'";
+
         $stmt = $this->pdo()->prepare(
-            'SELECT * FROM public.' . $this->table($request) . ' ORDER BY id ASC LIMIT :limit OFFSET :offset'
+            'SELECT * FROM public.' . $this->table($request) . $where . ' ORDER BY id ASC LIMIT :limit OFFSET :offset'
         );
+        if ($search !== '') {
+            $stmt->bindValue(':q', '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search) . '%', PDO::PARAM_STR);
+        }
         $stmt->bindValue(':limit', $this->itemsPerPage, PDO::PARAM_INT);
         $stmt->bindValue(':offset', ($page - 1) * $this->itemsPerPage, PDO::PARAM_INT);
         $stmt->execute();

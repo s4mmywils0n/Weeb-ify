@@ -51,25 +51,46 @@ numbered in the order to run them. Each has a `.down.sql` that undoes it.
 | # | File | What it does |
 |---|---|---|
 | 001 | `001_rename_anime_columns.sql` | Renames the `anime` columns with spaces to snake_case: `"age rating"` → `age_rating`, `"created at"` → `created_at`, `"end date"` → `end_date`, `"episode count"` → `episode_count`, `"popularity rank"` → `popularity_rank`, `"show type"` → `show_type`. **The code expects the new names, so run this on the Supabase database before using it.** |
+| 002 | `002_drop_temp_full_access.sql` | Drops the `TEMP FULL ACCESS` policy on `anime`, which let anyone with the Supabase publishable key insert, update and delete anime. **Already run on the live database (2026-11-19).** |
 
 To run one: paste it into the Supabase SQL editor, or
 `psql "<connection string>" -f database/migrations/001_rename_anime_columns.sql`.
 It is safe to run twice. The URL filters (`?showtype=TV`, `?agerating=PG`) keep their names.
 
-**Known differences**, also noted in `schema.sql`:
-- There is no `manga` table yet, so `/api.php/manga` and the `/manga` page return an error.
-- `favorites` has no foreign keys to `user` or `anime`.
-- `anime` has a Supabase policy named `TEMP FULL ACCESS` that lets anyone with the
-  publishable key change anime through Supabase's REST API. Remove it in Build 3.
+**Known gap:** `schema.sql` was generated on 2026-11-16 and is behind the live database.
+Since then the live database gained a `manga` table (snake_case columns), a
+`favorites.manga_id` column, and foreign keys from `favorites` to `user`, `anime` and
+`manga`. `schema.sql` does not have these yet.
+
+## Admins
+
+Admins can add, edit and delete anime and manga on the **`/admin`** page (an "Admin"
+link appears in the header, and an "Edit (admin)" button on each anime/manga page).
+
+There is no sign-up for admins. To make an existing account an admin, run this in the
+Supabase SQL editor:
+
+```sql
+UPDATE public."user" SET is_admin = true WHERE username = 'their-username';
+```
+
+Set it back to `false` to remove admin; it takes effect on that user's next request
+(the flag is read from the database every time, never from the session).
 
 ## API Documentation
 
 Base URL: `http://localhost/Weeb-ify/api.php` (OpenAPI: [`openapi.yaml`](openapi.yaml))
 
-| Route | Methods |
-|---|---|
-| `/anime`, `/manga` | `GET` (list), `POST` (create) |
-| `/anime/{id}`, `/manga/{id}` | `GET`, `PUT`, `PATCH`, `DELETE` |
+| Route | Methods | Who |
+|---|---|---|
+| `/anime`, `/manga` | `GET` (list, `?q=` title search, `?page=`) | anyone |
+| `/anime`, `/manga` | `POST` (create) | admins |
+| `/anime/{id}`, `/manga/{id}` | `GET` | anyone |
+| `/anime/{id}`, `/manga/{id}` | `PUT`, `PATCH`, `DELETE` | admins |
+| `/favorites` | `GET` (`?type=anime\|manga`, or `?anime_id=` / `?manga_id=` → `{"isFavorite"}`), `POST`, `DELETE` | logged in; only your own favorites |
+
+Who is logged in comes from the website's login session (log in on `/login` first).
+Not logged in → `401 Login required`; logged in but not an admin → `403 Admin access required`.
 
 ### Request pipeline (middleware)
 
@@ -84,10 +105,10 @@ classes in [`app/Api/Middleware`](app/Api/Middleware)):
 | 4 | `ErrorHandlerMiddleware` | Turns any error below it into a safe JSON error; real details go to the log under the request id | `400` `409` `500` |
 | 5 | `ContentNegotiationMiddleware` | Picks the response format from `Accept` | `406` |
 | 6 | `RouteMiddleware` | Known resource and id? Method allowed? (`Allow` header on 405) | `404` `405` |
-| 7 | `JsonBodyMiddleware` | `POST`/`PUT`/`PATCH`: checks `Content-Type`, size (64 KB) and that the body is a JSON object | `400` `413` `415` |
+| 7 | `AdminWriteMiddleware` | `POST`/`PUT`/`PATCH`/`DELETE` on anime and manga: must be logged in and have `is_admin` | `401` `403` |
+| 8 | `JsonBodyMiddleware` | `POST`/`PUT`/`PATCH`: checks `Content-Type`, size (64 KB) and that the body is a JSON object | `400` `413` `415` |
 | → | `ResourceController` | Create / read / update / delete | `200` `201` `400` `404` |
-
-Authentication and authorization middleware are added in Build 3.
+| → | `FavoritesController` | `/favorites`, scoped to the logged-in user | `200` `201` `401` `404` `409` |
 
 ### Media types
 
