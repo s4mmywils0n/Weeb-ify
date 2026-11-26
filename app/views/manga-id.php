@@ -55,8 +55,10 @@ $supabaseKey = (string) ($env['key'] ?? '');
 $favoriteUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 ?>
 <?php
-$title = 'Manga details — Weebi:fy';
+$title = 'Manga — Weebi:fy';
 $active = 'manga';
+$searchAction = BASE_URL . '/manga';
+$searchPlaceholder = 'Search manga';
 require __DIR__ . '/partials/header.php';
 ?>
 

@@ -16,6 +16,15 @@
  */
 if (!defined('BASE_URL')) { http_response_code(404); exit; }
 
+$uri = parse_url($_SERVER['sCRIPT_NAME'], PHP_URL_PATH);
+
+$apiPosition = strpos($uri, '/api.php');
+
+$path = substr(
+    $uri,
+    $apiPosition + strlen('/api.php')
+);
+
 $title             ??= 'Weebi:fy';
 $active            ??= '';
 $searchAction      ??= BASE_URL . '/anime';
@@ -34,8 +43,9 @@ $loggedInName = $loggedInUserId !== null
     : null;
 
 
-// Live anime suggestions only when the search goes to the anime list (not manga / favorites)
-$animeSearch = $searchAction === BASE_URL . '/anime';
+$catalogueSearch = in_array($searchAction, [BASE_URL . '/anime', BASE_URL . '/manga'], true);
+$catalogueType = $searchAction === BASE_URL . '/manga' ? 'manga' : 'anime';
+$suggestionCount = $catalogueType === 'manga' ? 10 : 5;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -46,7 +56,7 @@ $animeSearch = $searchAction === BASE_URL . '/anime';
     <title><?= $e($title) ?></title>
     <?= $extraHead ?>
     <link rel="stylesheet" href="<?= BASE_URL ?>/assets/css/site-chrome.css">
-    <?php if ($animeSearch): ?>
+    <?php if ($catalogueSearch): ?>
     <script src="<?= BASE_URL ?>/assets/js/header-search.js" defer></script>
     <?php endif; ?>
 </head>
@@ -65,10 +75,12 @@ $animeSearch = $searchAction === BASE_URL . '/anime';
             <?php endif; ?>
         </nav>
 
-        <form class="header-search" role="search" action="<?= $e($searchAction) ?>" method="get"<?php if ($animeSearch): ?>
-              data-suggest-url="<?= $e(API_URL . '/anime') ?>"
-              data-results-url="<?= $e(BASE_URL . '/anime') ?>"
-              data-detail-url="<?= $e(BASE_URL . '/anime') ?>"<?php endif; ?>>
+        <form class="header-search" role="search" action="<?= $e($searchAction) ?>" method="get"<?php if ($catalogueSearch): ?>
+              data-catalogue="<?= $e($catalogueType) ?>"
+              data-suggestion-count="<?= $suggestionCount ?>"
+              data-suggest-url="<?= $e(API_URL . '/' . $catalogueType) ?>"
+              data-results-url="<?= $e(BASE_URL . '/' . $catalogueType) ?>"
+              data-detail-url="<?= $e(BASE_URL . '/' . $catalogueType) ?>"<?php endif; ?>>
             <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none">
                 <circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.8" />
                 <path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />

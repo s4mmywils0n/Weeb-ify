@@ -110,63 +110,6 @@ $path = substr(
     $apiPosition + strlen('/api.php')
 );
 
-if (preg_match('#^/favorites/?$#', $path) === 1) {
-    if ($method !== 'POST') {
-        http_response_code(405);
-        header("Allow: POST, OPTIONS");
-        echo json_encode(["error" => "Method not allowed"]);
-        exit;
-    }
-
-    $input = json_decode(file_get_contents('php://input'), true);
-    if (json_last_error() !== JSON_ERROR_NONE || !is_array($input) || array_is_list($input)) {
-        http_response_code(400);
-        echo json_encode(["error" => "Invalid JSON object"]);
-        exit;
-    }
-
-    $userId = filter_var(
-        $input['user_id'] ?? null,
-        FILTER_VALIDATE_INT,
-        ['options' => ['min_range' => 1]]
-    );
-    $animeId = $input['anime_id'] ?? null;
-    $unknownFields = array_diff(array_keys($input), ['user_id', 'anime_id']);
-
-    if (
-        $userId === false ||
-        (!is_string($animeId) && !is_int($animeId)) ||
-        trim((string) $animeId) === '' ||
-        strlen((string) $animeId) > 255 ||
-        $unknownFields !== []
-    ) {
-        http_response_code(400);
-        echo json_encode(["error" => "A valid user_id and anime_id are required"]);
-        exit;
-    }
-
-    $stmt = $pdo->prepare(
-        "INSERT INTO public.favorites (user_id, anime_id)
-         VALUES (:user_id, :anime_id)
-         ON CONFLICT (user_id, anime_id) DO NOTHING
-         RETURNING *"
-    );
-    $stmt->execute([
-        ':user_id' => $userId,
-        ':anime_id' => trim((string) $animeId)
-    ]);
-    $favorite = $stmt->fetch();
-
-    if ($favorite === false) {
-        http_response_code(200);
-        echo json_encode(["message" => "This anime is already in your favorites"]);
-        exit;
-    }
-
-    http_response_code(201);
-    echo json_encode($favorite);
-    exit;
-}
 
 // 5. Define the allowed resources and fields
 // anime / manga: the snake_case columns from app/config/catalogue-fields.php (shared with the admin page)
@@ -352,15 +295,15 @@ if ($table === 'favorites') {
 // 7. GET all records or POST a new record
 if ($id === null) {
 
-    // GET all anime: filters, categories, sorting and cursor pagination
-    // (see app/Services/AnimeListService.php). Cursors are sent back in headers so the
+    // GET all anime and manga: filters, categories, sorting and cursor pagination.
+    // Cursors are sent back in headers so the
     // response body stays a plain JSON array, the same as before.
-    if ($method === 'GET' && $table === 'anime') {
+    if ($method === 'GET' && in_array($table, ['anime', 'manga'], true)) {
         require_once __DIR__ . '/app/Services/AnimeListService.php';
-        $animeFilters = require __DIR__ . '/app/config/anime-filters.php';
+        $filters = require __DIR__ . '/app/config/' . $table . '-filters.php';
 
         try {
-            $result = (new App\Services\AnimeListService($pdo, $animeFilters))->list($_GET);
+            $result = (new App\Services\AnimeListService($pdo, $filters, $table))->list($_GET);
         } catch (InvalidArgumentException $e) {
             http_response_code(400);
             echo json_encode(["error" => $e->getMessage()]);

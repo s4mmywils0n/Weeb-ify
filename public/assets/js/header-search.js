@@ -1,6 +1,6 @@
 /*
- * Header search: as the user types, show up to 5 anime whose title matches, plus a
- * "Show more results" button that opens the full anime list filtered by the same text.
+ * Header search: show title suggestions for the selected catalogue, plus a
+ * "Show more results" button that opens its full filtered list.
  *
  * Needs on the <form class="header-search">:
  *   data-suggest-url  the API list endpoint, e.g. /api.php/anime
@@ -16,9 +16,15 @@
     const resultsUrl = form.dataset.resultsUrl;
     const detailUrl = form.dataset.detailUrl;
 
-    const SUGGESTION_COUNT = 5;          // the API allows 5, 10 or 20
+    const catalogue = form.dataset.catalogue || "anime";
+    const suggestionCount = Number(form.dataset.suggestionCount);
+    const SUGGESTION_COUNT = Number.isInteger(suggestionCount) && suggestionCount > 0
+        ? suggestionCount
+        : 5;
     const SORT = "popularity_asc";       // most popular matches first
     const DELAY_MS = 200;                // wait for a short pause in typing
+    const isManga = catalogue === "manga";
+    const catalogueLabel = isManga ? "manga" : "anime";
 
     // ---- Build the dropdown (ARIA combobox + listbox) ----
     const panel = document.createElement("div");
@@ -30,7 +36,7 @@
     listbox.className = "search-suggest-list";
     listbox.id = "header-search-listbox";
     listbox.setAttribute("role", "listbox");
-    listbox.setAttribute("aria-label", "Anime suggestions");
+    listbox.setAttribute("aria-label", `${isManga ? "Manga" : "Anime"} suggestions`);
 
     const status = document.createElement("p");
     status.className = "search-suggest-status";
@@ -138,14 +144,25 @@
             title.textContent = record.title || "Untitled";
             const meta = document.createElement("span");
             meta.className = "search-suggest-meta";
-            // snake_case columns, with the old spaced names as a fallback
-            const showType = record.show_type ?? record["show type"];
-            const episodeCount = record.episode_count ?? record["episode count"];
-            meta.textContent = [
-                showType,
-                episodeCount ? `${episodeCount} episode${Number(episodeCount) === 1 ? "" : "s"}` : null,
-                record.status,
-            ].filter(Boolean).join(" · ");
+            if (isManga) {
+                const mangaType = record.manga_type ?? record.mangatype;
+                const chapterCount = record.chapter_count ?? record.chaptercount;
+                meta.textContent = [
+                    mangaType,
+                    chapterCount !== null && chapterCount !== undefined
+                        ? `${chapterCount} chapter${Number(chapterCount) === 1 ? "" : "s"}`
+                        : null,
+                    record.status,
+                ].filter(Boolean).join(" · ");
+            } else {
+                const showType = record.show_type ?? record["show type"];
+                const episodeCount = record.episode_count ?? record["episode count"];
+                meta.textContent = [
+                    showType,
+                    episodeCount ? `${episodeCount} episode${Number(episodeCount) === 1 ? "" : "s"}` : null,
+                    record.status,
+                ].filter(Boolean).join(" · ");
+            }
             text.append(title, meta);
 
             link.append(thumb, text);
@@ -154,7 +171,7 @@
         });
 
         listbox.hidden = records.length === 0;
-        setStatus(records.length === 0 ? `No anime found for “${query}”.` : "", false);
+        setStatus(records.length === 0 ? `No ${catalogueLabel} found for “${query}”.` : "", false);
         moreButton.hidden = records.length === 0;
         setActive(-1);
         open();
@@ -234,13 +251,13 @@
                 close();
             }
         } else if (event.key === "Enter" && !panel.hidden && activeIndex >= 0 && activeIndex < count) {
-            // Enter on a highlighted anime opens it; otherwise the form submits (all results)
+            // Enter on a highlighted result opens it; otherwise the form submits (all results)
             event.preventDefault();
             window.location.href = options()[activeIndex].querySelector("a").href;
         }
     });
 
-    // Enter / "Show more results": every anime matching the text
+    // Enter / "Show more results": every item matching the text
     form.addEventListener("submit", event => {
         const query = input.value.trim();
         event.preventDefault();
