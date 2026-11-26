@@ -58,7 +58,8 @@ if ($startsWith($scriptDir)) {
 // Used by the views to build links: BASE_URL . '/anime'
 define('BASE_URL', $basePath);
 // api.php lives in the project root (outside public/)
-define('API_URL', $projectDir . '/api.php');
+$apiBasePath = PHP_SAPI === 'cli-server' ? '' : $projectDir;
+define('API_URL', $apiBasePath . '/api.php');
 
 $uri = '/' . ltrim(substr($uri, strlen($basePath)), '/');
 

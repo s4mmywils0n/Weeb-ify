@@ -96,19 +96,17 @@ $method = $_SERVER['REQUEST_METHOD'];
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 
-// Base path: /Weeb-ify/api.php under Apache, or /api.php under php -S -t public
+// Support both URL path-info (/api.php/anime) and server-provided PATH_INFO.
 $apiPosition = strpos($uri, '/api.php');
-
-if ($apiPosition === false) {
+if ($apiPosition !== false) {
+    $path = substr($uri, $apiPosition + strlen('/api.php'));
+} elseif (isset($_SERVER['PATH_INFO']) && is_string($_SERVER['PATH_INFO'])) {
+    $path = $_SERVER['PATH_INFO'];
+} else {
     http_response_code(404);
     echo json_encode(["error" => "Endpoint not found"]);
     exit;
 }
-
-$path = substr(
-    $uri,
-    $apiPosition + strlen('/api.php')
-);
 
 
 // 5. Define the allowed resources and fields
