@@ -163,8 +163,7 @@ if ($catalogueWrite || $table === 'user') {
 // manga. Only the column in the favorites table differs ("anime_id" / "manga_id"),
 // so the verbs below are written once against $target.
 //
-// ?type=anime|manga picks the kind. When it is missing we fall back to whichever id
-// was sent (?anime_id= / ?manga_id=), so older links keep working unchanged.
+// The type discriminator selects which unique catalogue ID column is used.
 if ($table === 'favorites') {
     $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 
@@ -172,17 +171,53 @@ if ($table === 'favorites') {
         sendJson(401, ["error" => "Login required"]);
     }
 
-    $type = is_string($_GET['type'] ?? null) ? strtolower(trim($_GET['type'])) : '';
+    $body = null;
+    if ($method === 'POST') {
+        $body = json_decode((string) file_get_contents('php://input'), true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($body) || array_is_list($body)) {
+            sendJson(400, ["error" => "Invalid JSON object"]);
+        }
 
-    if ($type === '') {
-        $type = array_key_exists('manga_id', $_GET) ? 'manga' : 'anime';
+        $unknownFields = array_diff(array_keys($body), ['type', 'anime_id', 'manga_id', 'user_id']);
+        if ($unknownFields !== []) {
+            sendJson(400, ["error" => "Unknown field provided"]);
+        }
+
+        if (array_key_exists('anime_id', $body) && array_key_exists('manga_id', $body)) {
+            sendJson(400, ["error" => "Provide only one of anime_id or manga_id"]);
+        }
     }
 
+    $queryType = $_GET['type'] ?? '';
+    $bodyType = $body['type'] ?? '';
+    if (!is_string($queryType) || !is_string($bodyType)) {
+        sendJson(400, ["error" => "Type must be anime or manga"]);
+    }
+
+    $queryType = strtolower(trim($queryType));
+    $bodyType = strtolower(trim($bodyType));
+    if ($queryType !== '' && $bodyType !== '' && $queryType !== $bodyType) {
+        sendJson(400, ["error" => "Query and JSON types must match"]);
+    }
+
+    $type = $queryType !== '' ? $queryType : $bodyType;
+    if ($type === '') {
+        $hasMangaId = array_key_exists('manga_id', $_GET)
+            || array_key_exists('manga_id', $body ?? []);
+        $type = $hasMangaId ? 'manga' : 'anime';
+    }
     if (!in_array($type, ['anime', 'manga'], true)) {
         sendJson(400, ["error" => "Invalid type. Allowed: anime, manga"]);
     }
 
     $column = $type === 'manga' ? 'manga_id' : 'anime_id';
+    $otherColumn = $type === 'manga' ? 'anime_id' : 'manga_id';
+    if (
+        array_key_exists($otherColumn, $_GET) ||
+        ($body !== null && array_key_exists($otherColumn, $body))
+    ) {
+        sendJson(400, ["error" => "Type does not match the supplied ID field"]);
+    }
 
     $targetId = filter_var(
         $_GET[$column] ?? null,
@@ -193,9 +228,24 @@ if ($table === 'favorites') {
 
     // ---- GET: list the current user's favorites of this type ----
     if ($method === 'GET') {
+        if ($targetId !== null) {
+            $stmt = $pdo->prepare(
+                "SELECT EXISTS (
+                    SELECT 1 FROM public.favorites
+                    WHERE user_id = :user_id AND $column = :target_id
+                )"
+            );
+            $stmt->execute([':user_id' => $userId, ':target_id' => $targetId]);
+            sendJson(200, [
+                'type' => $type,
+                $column => $targetId,
+                'isFavorite' => (bool) $stmt->fetchColumn(),
+            ]);
+        }
+
         if ($type === 'manga') {
             $stmt = $pdo->prepare("
-                SELECT f.id, f.manga_id, f.created_at,
+                SELECT m.id AS id, f.manga_id, f.created_at,
                        m.title, m.image,
                        m.chapter_count, m.volume_count,
                        m.manga_type, m.serialization, m.status
@@ -206,7 +256,7 @@ if ($table === 'favorites') {
             ");
         } else {
             $stmt = $pdo->prepare("
-                SELECT f.id, f.anime_id, f.created_at,
+                SELECT a.id AS id, f.anime_id, f.created_at,
                        a.title, a.image,
                        a.episode_count, a.show_type,
                        a.age_rating, a.popularity_rank, a.status
@@ -228,11 +278,6 @@ if ($table === 'favorites') {
 
     // ---- POST: add (idempotent) ----
     if ($method === 'POST') {
-        $body = json_decode((string) file_get_contents('php://input'), true);
-        if (!is_array($body) || array_is_list($body)) {
-            $body = [];
-        }
-
         $postedId = filter_var(
             $body[$column] ?? $_GET[$column] ?? null,
             FILTER_VALIDATE_INT,
@@ -265,7 +310,11 @@ if ($table === 'favorites') {
             sendJson($status, ["error" => $message, "sqlstate" => (string) $e->getCode()]);
         }
 
-        sendJson(201, ["success" => true]);
+        sendJson($stmt->rowCount() > 0 ? 201 : 200, [
+            "success" => true,
+            "type" => $type,
+            $column => $postedId,
+        ]);
     }
 
     // ---- DELETE: remove (idempotent) ----

@@ -109,7 +109,7 @@ require __DIR__ . '/partials/header.php';
 
             try {
                 const res = await fetch(
-                    `${API_URL}/favorites?manga_id=${encodeURIComponent(mangaId)}`,
+                    `${API_URL}/favorites?type=manga&manga_id=${encodeURIComponent(mangaId)}`,
                     { credentials: "same-origin", headers: { "Accept": "application/json" } }
                 );
                 if (!res.ok) throw new Error("Could not check favorites");
@@ -132,14 +132,14 @@ require __DIR__ . '/partials/header.php';
 
             try {
                 const url = isFavorite
-                    ? `${API_URL}/favorites?manga_id=${currentMangaId}`
+                    ? `${API_URL}/favorites?type=manga&manga_id=${encodeURIComponent(currentMangaId)}`
                     : `${API_URL}/favorites`;
                 const options = {
                     method: isFavorite ? "DELETE" : "POST",
                     credentials: "same-origin",
                     headers: { "Accept": "application/json", "Content-Type": "application/json" },
                 };
-                if (!isFavorite) options.body = JSON.stringify({ manga_id: Number(currentMangaId) });
+                if (!isFavorite) options.body = JSON.stringify({ type: "manga", manga_id: currentMangaId });
 
                 const res = await fetch(url, options);
                 const data = await res.json().catch(() => ({}));

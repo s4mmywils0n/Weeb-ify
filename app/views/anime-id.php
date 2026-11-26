@@ -110,7 +110,7 @@ async function loadFavoriteState(animeId) {
 
     try {
         const res = await fetch(
-            `${API_URL}/favorites?anime_id=${encodeURIComponent(animeId)}`,
+            `${API_URL}/favorites?type=anime&anime_id=${encodeURIComponent(animeId)}`,
             { credentials: "same-origin", headers: { "Accept": "application/json" } }
         );
         if (!res.ok) throw new Error("Could not check favorites");
@@ -133,14 +133,14 @@ favoriteButton.addEventListener("click", async () => {
 
     try {
         const url = isFavorite
-            ? `${API_URL}/favorites?anime_id=${currentAnimeId}`
+            ? `${API_URL}/favorites?type=anime&anime_id=${encodeURIComponent(currentAnimeId)}`
             : `${API_URL}/favorites`;
         const options = {
             method: isFavorite ? "DELETE" : "POST",
             credentials: "same-origin",
             headers: { "Accept": "application/json", "Content-Type": "application/json" },
         };
-        if (!isFavorite) options.body = JSON.stringify({ anime_id: Number(currentAnimeId) });
+        if (!isFavorite) options.body = JSON.stringify({ type: "anime", anime_id: currentAnimeId });
 
         const res = await fetch(url, options);
         const data = await res.json().catch(() => ({}));
