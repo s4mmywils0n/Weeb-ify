@@ -1,4 +1,22 @@
 <?php
+// Never show PHP errors, warnings or notices to visitors: they go to the PHP error log
+// instead (log_errors), whatever php.ini says. Remove these lines only for local debugging.
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
+ini_set('log_errors', '1');
+
+// Anything not caught below: log it and answer with a generic JSON error, so clients
+// never get an empty body or PHP's own error text.
+set_exception_handler(function (Throwable $e): void {
+    error_log('api.php: ' . $e);
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=UTF-8');
+    }
+    echo json_encode(["error" => "Something went wrong. Please try again."]);
+});
+
 // 1. Database Configuration
 
 $envPath = __DIR__ . '/.env';
@@ -16,7 +34,11 @@ if (file_exists($envPath)) {
     $user = $env['user'];
     $password = $env['password'];
 } else {
-    die("Error: .env file not found.");
+    error_log('api.php: .env file not found in ' . __DIR__);
+    http_response_code(500);
+    header('Content-Type: application/json; charset=UTF-8');
+    echo json_encode(["error" => "Server configuration error."]);
+    exit;
 }
 $dsn = "pgsql:host=$host;port=$port;dbname=$database";
 
@@ -25,6 +47,15 @@ function sendJson(int $status, mixed $body): never
     http_response_code($status);
     echo json_encode($body, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
+}
+
+// Never send password hashes out of the API, not even to admins.
+function withoutSecrets(mixed $row): mixed
+{
+    if (is_array($row)) {
+        unset($row['password']);
+    }
+    return $row;
 }
 
 $options = [
@@ -65,8 +96,8 @@ $method = $_SERVER['REQUEST_METHOD'];
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 
-// Base path: /Web-Services/api.php
-$apiPosition = strpos($uri, '/Weeb-ify/api.php');
+// Base path: /Weeb-ify/api.php under Apache, or /api.php under php -S -t public
+$apiPosition = strpos($uri, '/api.php');
 
 if ($apiPosition === false) {
     http_response_code(404);
@@ -76,105 +107,22 @@ if ($apiPosition === false) {
 
 $path = substr(
     $uri,
-    $apiPosition + strlen('/Weeb-ify/api.php')
+    $apiPosition + strlen('/api.php')
 );
 
-if (preg_match('#^/favorites/?$#', $path) === 1) {
-    if ($method !== 'POST') {
-        http_response_code(405);
-        header("Allow: POST, OPTIONS");
-        echo json_encode(["error" => "Method not allowed"]);
-        exit;
-    }
-
-    $input = json_decode(file_get_contents('php://input'), true);
-    if (json_last_error() !== JSON_ERROR_NONE || !is_array($input) || array_is_list($input)) {
-        http_response_code(400);
-        echo json_encode(["error" => "Invalid JSON object"]);
-        exit;
-    }
-
-    $userId = filter_var(
-        $input['user_id'] ?? null,
-        FILTER_VALIDATE_INT,
-        ['options' => ['min_range' => 1]]
-    );
-    $animeId = $input['anime_id'] ?? null;
-    $unknownFields = array_diff(array_keys($input), ['user_id', 'anime_id']);
-
-    if (
-        $userId === false ||
-        (!is_string($animeId) && !is_int($animeId)) ||
-        trim((string) $animeId) === '' ||
-        strlen((string) $animeId) > 255 ||
-        $unknownFields !== []
-    ) {
-        http_response_code(400);
-        echo json_encode(["error" => "A valid user_id and anime_id are required"]);
-        exit;
-    }
-
-    $stmt = $pdo->prepare(
-        "INSERT INTO public.favorites (user_id, anime_id)
-         VALUES (:user_id, :anime_id)
-         ON CONFLICT (user_id, anime_id) DO NOTHING
-         RETURNING *"
-    );
-    $stmt->execute([
-        ':user_id' => $userId,
-        ':anime_id' => trim((string) $animeId)
-    ]);
-    $favorite = $stmt->fetch();
-
-    if ($favorite === false) {
-        http_response_code(200);
-        echo json_encode(["message" => "This anime is already in your favorites"]);
-        exit;
-    }
-
-    http_response_code(201);
-    echo json_encode($favorite);
-    exit;
-}
 
 // 5. Define the allowed resources and fields
+// anime / manga: the snake_case columns from app/config/catalogue-fields.php (shared with the admin page)
+$catalogueFields = require __DIR__ . '/app/config/catalogue-fields.php';
 $resources = [
-    'anime' => [
-        'anime_id',
-        'slug',
-        'image',
-        'title',
-        'synopsis',
-        'agerating',
-        'createdat',
-        'enddate',
-        'episodecount',
-        'popularityrank',
-        'showtype',
-        'status',
-        'kitsu_url'
-        ],  
+    'anime' => $catalogueFields['anime']['fields'],
     'favorites'=>[
               'user_id',
             'anime_id' 
         ],
-     'manga' => [
-        'manga_id',
-        'slug',
-        'image',
-        'title',
-        'synopsis',
-        'agerating',
-        'createdat',
-        'enddate',
-        'chaptercount',
-        'volumecount',
-        'popularityrank',
-        'mangatype',
-        'serialization',
-        'status',
-        'kitsu_url',
-    ]
+    'manga' => $catalogueFields['manga']['fields'],
+    // /user is admin-only (see below) and read-only through the API: no writable fields
+    'user' => [],
 ];
 
 // 6. Match the requested endpoint (filter)
@@ -191,13 +139,31 @@ $id = isset($matches[2]) && $matches[2] !== ''
 
 $allowedFields = $resources[$table];
 
+// Admin only (a logged-in user (401) whose user.is_admin is true (403)):
+//   - anime / manga writes. Reads of the catalogue stay public.
+//   - everything on /user (it holds emails and password hashes), reads included.
+// is_admin is read from the database on every request, so removing someone's admin flag
+// takes effect immediately. The session key is the one AuthController::login() sets.
+$catalogueWrite = in_array($table, ['anime', 'manga'], true)
+    && in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true);
+if ($catalogueWrite || $table === 'user') {
+    $adminUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+    if ($adminUserId === null) {
+        sendJson(401, ["error" => "Login required"]);
+    }
+    $adminStmt = $pdo->prepare('SELECT is_admin FROM public."user" WHERE id = :id');
+    $adminStmt->execute([':id' => $adminUserId]);
+    if (!filter_var($adminStmt->fetchColumn(), FILTER_VALIDATE_BOOLEAN)) {
+        sendJson(403, ["error" => "Admin access required"]);
+    }
+}
+
 //========================================================
 // Favorites hold one row per (user, target), where a target is either an anime or a
 // manga. Only the column in the favorites table differs ("anime_id" / "manga_id"),
 // so the verbs below are written once against $target.
 //
-// ?type=anime|manga picks the kind. When it is missing we fall back to whichever id
-// was sent (?anime_id= / ?manga_id=), so older links keep working unchanged.
+// The type discriminator selects which unique catalogue ID column is used.
 if ($table === 'favorites') {
     $userId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 
@@ -205,17 +171,53 @@ if ($table === 'favorites') {
         sendJson(401, ["error" => "Login required"]);
     }
 
-    $type = is_string($_GET['type'] ?? null) ? strtolower(trim($_GET['type'])) : '';
+    $body = null;
+    if ($method === 'POST') {
+        $body = json_decode((string) file_get_contents('php://input'), true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($body) || array_is_list($body)) {
+            sendJson(400, ["error" => "Invalid JSON object"]);
+        }
 
-    if ($type === '') {
-        $type = array_key_exists('manga_id', $_GET) ? 'manga' : 'anime';
+        $unknownFields = array_diff(array_keys($body), ['type', 'anime_id', 'manga_id', 'user_id']);
+        if ($unknownFields !== []) {
+            sendJson(400, ["error" => "Unknown field provided"]);
+        }
+
+        if (array_key_exists('anime_id', $body) && array_key_exists('manga_id', $body)) {
+            sendJson(400, ["error" => "Provide only one of anime_id or manga_id"]);
+        }
     }
 
+    $queryType = $_GET['type'] ?? '';
+    $bodyType = $body['type'] ?? '';
+    if (!is_string($queryType) || !is_string($bodyType)) {
+        sendJson(400, ["error" => "Type must be anime or manga"]);
+    }
+
+    $queryType = strtolower(trim($queryType));
+    $bodyType = strtolower(trim($bodyType));
+    if ($queryType !== '' && $bodyType !== '' && $queryType !== $bodyType) {
+        sendJson(400, ["error" => "Query and JSON types must match"]);
+    }
+
+    $type = $queryType !== '' ? $queryType : $bodyType;
+    if ($type === '') {
+        $hasMangaId = array_key_exists('manga_id', $_GET)
+            || array_key_exists('manga_id', $body ?? []);
+        $type = $hasMangaId ? 'manga' : 'anime';
+    }
     if (!in_array($type, ['anime', 'manga'], true)) {
         sendJson(400, ["error" => "Invalid type. Allowed: anime, manga"]);
     }
 
     $column = $type === 'manga' ? 'manga_id' : 'anime_id';
+    $otherColumn = $type === 'manga' ? 'anime_id' : 'manga_id';
+    if (
+        array_key_exists($otherColumn, $_GET) ||
+        ($body !== null && array_key_exists($otherColumn, $body))
+    ) {
+        sendJson(400, ["error" => "Type does not match the supplied ID field"]);
+    }
 
     $targetId = filter_var(
         $_GET[$column] ?? null,
@@ -226,9 +228,24 @@ if ($table === 'favorites') {
 
     // ---- GET: list the current user's favorites of this type ----
     if ($method === 'GET') {
+        if ($targetId !== null) {
+            $stmt = $pdo->prepare(
+                "SELECT EXISTS (
+                    SELECT 1 FROM public.favorites
+                    WHERE user_id = :user_id AND $column = :target_id
+                )"
+            );
+            $stmt->execute([':user_id' => $userId, ':target_id' => $targetId]);
+            sendJson(200, [
+                'type' => $type,
+                $column => $targetId,
+                'isFavorite' => (bool) $stmt->fetchColumn(),
+            ]);
+        }
+
         if ($type === 'manga') {
             $stmt = $pdo->prepare("
-                SELECT f.id, f.manga_id, f.created_at,
+                SELECT m.id AS id, f.manga_id, f.created_at,
                        m.title, m.image,
                        m.chapter_count, m.volume_count,
                        m.manga_type, m.serialization, m.status
@@ -239,7 +256,7 @@ if ($table === 'favorites') {
             ");
         } else {
             $stmt = $pdo->prepare("
-                SELECT f.id, f.anime_id, f.created_at,
+                SELECT a.id AS id, f.anime_id, f.created_at,
                        a.title, a.image,
                        a.episode_count, a.show_type,
                        a.age_rating, a.popularity_rank, a.status
@@ -261,11 +278,6 @@ if ($table === 'favorites') {
 
     // ---- POST: add (idempotent) ----
     if ($method === 'POST') {
-        $body = json_decode((string) file_get_contents('php://input'), true);
-        if (!is_array($body) || array_is_list($body)) {
-            $body = [];
-        }
-
         $postedId = filter_var(
             $body[$column] ?? $_GET[$column] ?? null,
             FILTER_VALIDATE_INT,
@@ -298,7 +310,11 @@ if ($table === 'favorites') {
             sendJson($status, ["error" => $message, "sqlstate" => (string) $e->getCode()]);
         }
 
-        sendJson(201, ["success" => true]);
+        sendJson($stmt->rowCount() > 0 ? 201 : 200, [
+            "success" => true,
+            "type" => $type,
+            $column => $postedId,
+        ]);
     }
 
     // ---- DELETE: remove (idempotent) ----
@@ -329,15 +345,15 @@ if ($table === 'favorites') {
 // 7. GET all records or POST a new record
 if ($id === null) {
 
-    // GET all anime: filters, categories, sorting and cursor pagination
-    // (see app/Services/AnimeListService.php). Cursors are sent back in headers so the
+    // GET all anime and manga: filters, categories, sorting and cursor pagination.
+    // Cursors are sent back in headers so the
     // response body stays a plain JSON array, the same as before.
-    if ($method === 'GET' && $table === 'anime') {
+    if ($method === 'GET' && in_array($table, ['anime', 'manga'], true)) {
         require_once __DIR__ . '/app/Services/AnimeListService.php';
-        $animeFilters = require __DIR__ . '/app/config/anime-filters.php';
+        $filters = require __DIR__ . '/app/config/' . $table . '-filters.php';
 
         try {
-            $result = (new App\Services\AnimeListService($pdo, $animeFilters))->list($_GET);
+            $result = (new App\Services\AnimeListService($pdo, $filters, $table))->list($_GET);
         } catch (InvalidArgumentException $e) {
             http_response_code(400);
             echo json_encode(["error" => $e->getMessage()]);
@@ -378,8 +394,9 @@ if ($id === null) {
         $searchQuery = isset($_GET['q']) && is_string($_GET['q'])
             ? trim($_GET['q'])
             : '';
+        // The manga table has no author / genre columns, so search the title only
         $searchCondition = $table === 'manga' && $searchQuery !== ''
-            ? ' WHERE (title ILIKE :search_title OR author ILIKE :search_author OR genre ILIKE :search_genre)'
+            ? " WHERE title ILIKE :search_title ESCAPE '!'"
             : '';
 
         $stmt = $pdo->prepare(
@@ -388,10 +405,8 @@ if ($id === null) {
              LIMIT :limit OFFSET :offset"
         );
         if ($searchCondition !== '') {
-            $searchTerm = '%' . $searchQuery . '%';
+            $searchTerm = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $searchQuery) . '%';
             $stmt->bindValue(':search_title', $searchTerm, PDO::PARAM_STR);
-            $stmt->bindValue(':search_author', $searchTerm, PDO::PARAM_STR);
-            $stmt->bindValue(':search_genre', $searchTerm, PDO::PARAM_STR);
         }
         $stmt->bindValue(':limit', $itemsPerPage, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
@@ -399,7 +414,7 @@ if ($id === null) {
         $records = $stmt->fetchAll();
 
         http_response_code(200);
-        echo json_encode($records);
+        echo json_encode($table === 'user' ? array_map('withoutSecrets', $records) : $records);
         exit;
     }
 
@@ -477,7 +492,7 @@ if ($id === null) {
         // $stmt->execute([':id' => $newId]);
 
         http_response_code(201);
-        echo json_encode($stmt->fetch());
+        echo json_encode(withoutSecrets($stmt->fetch()));
         exit;
     }
 
@@ -503,7 +518,7 @@ if ($method === 'GET') {
     }
 
     http_response_code(200);
-    echo json_encode($record);
+    echo json_encode(withoutSecrets($record));
     exit;
 }
 
@@ -599,7 +614,8 @@ if ($method === 'PUT' || $method === 'PATCH') {
     $setParts = [];
 
     foreach (array_keys($input) as $field) {
-        $setParts[] = "`$field` = :$field";
+        // Postgres quotes identifiers with "...", not MySQL backticks (fields are allowlisted)
+        $setParts[] = "\"$field\" = :$field";
     }
 
     $sql = "UPDATE public.$table
@@ -622,7 +638,7 @@ if ($method === 'PUT' || $method === 'PATCH') {
     $stmt->execute([':id' => $id]);
 
     http_response_code(200);
-    echo json_encode($stmt->fetch());
+    echo json_encode(withoutSecrets($stmt->fetch()));
     exit;
 }
 

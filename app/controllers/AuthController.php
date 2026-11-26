@@ -13,7 +13,10 @@ class AuthController
     // POST /login
     public function login(): void
     {
-        session_start();
+        // public/index.php already starts the session; only start one if it didn't
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
 
         $login = is_string($_POST['login'] ?? null) ? trim($_POST['login']) : '';
         $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
@@ -121,7 +124,10 @@ class AuthController
 
     public function LogOut():void
     {
-        session_start();
+        // public/index.php already starts the session; only start one if it didn't
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
 
         $_SESSION = [];
 

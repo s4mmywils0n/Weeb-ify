@@ -1,0 +1,12 @@
+2026-11-26T08:12:50+00:00 ERROR [c90e12a2a1022973] RuntimeException: .env file not found in the project root. in PDOService.php:34
+2026-11-26T08:12:50+00:00 INFO  [c90e12a2a1022973] GET /anime?limit=20 500 4ms json
+2026-11-26T08:12:58+00:00 ERROR [f2f9a5234b21468c] RuntimeException: .env file not found in the project root. in PDOService.php:34
+2026-11-26T08:12:58+00:00 INFO  [f2f9a5234b21468c] GET /anime 500 1ms xml
+2026-11-26T08:13:07+00:00 ERROR [de76f1c7a30792e2] RuntimeException: .env file not found in the project root. in PDOService.php:34
+2026-11-26T08:13:07+00:00 INFO  [de76f1c7a30792e2] GET /anime?limit=20 500 1ms json
+2026-11-26T08:13:09+00:00 ERROR [7b40067ff1665438] RuntimeException: .env file not found in the project root. in PDOService.php:34
+2026-11-26T08:13:09+00:00 INFO  [7b40067ff1665438] GET /anime?limit=20 500 1ms json
+2026-11-26T08:14:04+00:00 ERROR [a511123b44f7973e] RuntimeException: .env file not found in the project root. in PDOService.php:34
+2026-11-26T08:14:04+00:00 INFO  [a511123b44f7973e] GET /anime?limit=20 500 1ms json
+2026-11-26T08:42:43+00:00 ERROR [53dae45b54ac50c2] RuntimeException: .env file not found in the project root. in PDOService.php:34
+2026-11-26T08:42:43+00:00 INFO  [53dae45b54ac50c2] GET /anime?limit=20 500 1ms json

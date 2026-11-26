@@ -236,9 +236,9 @@ require __DIR__ . '/partials/header.php';
             addText(copy, "h2", "", record.title || "Untitled anime");
 
             const details = [];
-            // Supabase column names have spaces ("show type"); the old names are kept as a fallback
-            const showType = record["show type"] ?? record.showtype;
-            const episodeCount = record["episode count"] ?? record.episodecount;
+            // snake_case columns; the older names are kept as a fallback
+            const showType = record.show_type ?? record["show type"] ?? record.showtype;
+            const episodeCount = record.episode_count ?? record["episode count"] ?? record.episodecount;
             if (showType) details.push(showType);
             if (episodeCount !== null && episodeCount !== undefined) {
                 details.push(`${episodeCount} episodes`);

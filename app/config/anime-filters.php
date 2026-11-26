@@ -9,14 +9,14 @@ declare(strict_types=1);
  *
  * Only values listed here are accepted, so nothing from the URL is ever put into SQL directly.
  *
- * NOTE: the Supabase columns have spaces in their names ("show type", "age rating", ...),
- * so they must be wrapped in double quotes in SQL.
+ * NOTE: the database columns use snake_case (show_type, age_rating, created_at,
+ * popularity_rank). They used to have spaces ("show type", ...) and needed double quotes.
  */
 return [
     // ?showtype=TV
     'showtype' => [
         'label'   => 'Show type',
-        'column'  => '"show type"',
+        'column'  => 'show_type',
         'options' => [
             'TV'      => 'TV',
             'movie'   => 'Movie',
@@ -30,7 +30,7 @@ return [
     // ?agerating=PG
     'agerating' => [
         'label'   => 'Age rating',
-        'column'  => '"age rating"',
+        'column'  => 'age_rating',
         'options' => [
             'G'  => 'G — General audiences',
             'PG' => 'PG — Parental guidance',
@@ -65,9 +65,9 @@ return [
         'default'         => ['label' => 'Default',                                'expr' => 'id',                                                    'cast' => 'bigint',    'dir' => 'ASC'],
         'title_asc'       => ['label' => 'Title: A → Z',                           'expr' => "COALESCE(LOWER(title), '')",                            'cast' => 'text',      'dir' => 'ASC'],
         'title_desc'      => ['label' => 'Title: Z → A',                           'expr' => "COALESCE(LOWER(title), '')",                            'cast' => 'text',      'dir' => 'DESC'],
-        'created_asc'     => ['label' => 'Date added: oldest first',               'expr' => "COALESCE(\"created at\", 'infinity'::timestamp)",        'cast' => 'timestamp', 'dir' => 'ASC'],
-        'created_desc'    => ['label' => 'Date added: newest first',               'expr' => "COALESCE(\"created at\", '-infinity'::timestamp)",       'cast' => 'timestamp', 'dir' => 'DESC'],
-        'popularity_asc'  => ['label' => 'Popularity rank: ascending (#1 first)',  'expr' => 'COALESCE("popularity rank", 2147483647)',               'cast' => 'bigint',    'dir' => 'ASC'],
-        'popularity_desc' => ['label' => 'Popularity rank: descending',            'expr' => 'COALESCE("popularity rank", -1)',                       'cast' => 'bigint',    'dir' => 'DESC'],
+        'created_asc'     => ['label' => 'Date added: oldest first',               'expr' => "COALESCE(created_at, 'infinity'::timestamp)",        'cast' => 'timestamp', 'dir' => 'ASC'],
+        'created_desc'    => ['label' => 'Date added: newest first',               'expr' => "COALESCE(created_at, '-infinity'::timestamp)",       'cast' => 'timestamp', 'dir' => 'DESC'],
+        'popularity_asc'  => ['label' => 'Popularity rank: ascending (#1 first)',  'expr' => 'COALESCE(popularity_rank, 2147483647)',               'cast' => 'bigint',    'dir' => 'ASC'],
+        'popularity_desc' => ['label' => 'Popularity rank: descending',            'expr' => 'COALESCE(popularity_rank, -1)',                       'cast' => 'bigint',    'dir' => 'DESC'],
     ],
 ];

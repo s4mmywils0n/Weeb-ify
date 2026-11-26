@@ -15,14 +15,14 @@ tags:
   - name: Manga
     description: Operations for manga records
   - name: Favorites
-    description: Operations for anime favorites
+    description: Operations for anime and manga favorites
 
 paths:
   /favorites:
     post:
       tags:
         - Favorites
-      summary: Add an anime to a user's favorites
+      summary: Add an anime or manga to the current user's favorites
       operationId: addFavorite
       requestBody:
         required: true
@@ -36,9 +36,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Favorite"
+                $ref: "#/components/schemas/FavoriteResult"
         "200":
-          description: Anime is already in this user's favorites
+          description: Favorite already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FavoriteResult"
         "400":
           $ref: "#/components/responses/BadRequest"
         "405":
@@ -585,18 +589,65 @@ components:
         - anime_id
 
     FavoriteInput:
+      oneOf:
+        - $ref: "#/components/schemas/AnimeFavoriteInput"
+        - $ref: "#/components/schemas/MangaFavoriteInput"
+      discriminator:
+        propertyName: type
+        mapping:
+          anime: "#/components/schemas/AnimeFavoriteInput"
+          manga: "#/components/schemas/MangaFavoriteInput"
+
+    AnimeFavoriteInput:
       type: object
+      additionalProperties: false
       required:
-        - user_id
+        - type
         - anime_id
       properties:
-        user_id:
+        type:
+          type: string
+          enum: [anime]
+        anime_id:
           type: integer
           minimum: 1
-        anime_id:
+
+    MangaFavoriteInput:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - manga_id
+      properties:
+        type:
           type: string
-          minLength: 1
-          maxLength: 255
+          enum: [manga]
+        manga_id:
+          type: integer
+          minimum: 1
+
+    FavoriteResult:
+      oneOf:
+        - type: object
+          required: [success, type, anime_id]
+          properties:
+            success:
+              type: boolean
+            type:
+              type: string
+              enum: [anime]
+            anime_id:
+              type: integer
+        - type: object
+          required: [success, type, manga_id]
+          properties:
+            success:
+              type: boolean
+            type:
+              type: string
+              enum: [manga]
+            manga_id:
+              type: integer
 
     Error:
       type: object

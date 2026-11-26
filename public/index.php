@@ -2,6 +2,13 @@
 
 declare(strict_types=1);
 
+// Never show PHP errors, warnings or notices to visitors: they go to the PHP error log
+// instead (log_errors), whatever php.ini says. Remove these lines only for local debugging.
+error_reporting(E_ALL);
+ini_set('display_errors', '0');
+ini_set('display_startup_errors', '0');
+ini_set('log_errors', '1');
+
 
 require_once __DIR__ . '/../app/core/Router.php';
 require_once __DIR__ . '/../app/Services/PDOService.php';
@@ -11,8 +18,10 @@ require_once __DIR__ . '/../app/middleware/Middleware.php';
 require_once __DIR__ . '/../app/middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../app/middleware/GuestMiddleware.php';
 require_once __DIR__ . '/../app/middleware/OwnsProfileMiddleware.php';
+require_once __DIR__ . '/../app/middleware/AdminMiddleware.php';
 
 use App\Controllers\AuthController;
+use App\Middleware\AdminMiddleware;
 use App\Middleware\AuthMiddleware;
 use App\Middleware\GuestMiddleware;
 use App\Middleware\OwnsProfileMiddleware;
@@ -76,6 +85,27 @@ function currentUserId(): ?int
     return isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 }
 
+// Is the logged-in user an admin (user.is_admin)? Read from the database once per request,
+// never trusted from the session, so revoking admin works immediately.
+// Used to show the "Admin" link and by AdminMiddleware; api.php checks again on every write.
+function currentUserIsAdmin(): bool
+{
+    static $cache = [];
+    $userId = currentUserId();
+    if ($userId === null) {
+        return false;
+    }
+    if (!array_key_exists($userId, $cache)) {
+        try {
+            $cache[$userId] = (new \App\Models\AccountModel(new \App\Services\PDOService()))->isAdmin($userId);
+        } catch (\Throwable $e) {
+            error_log('Admin check failed: ' . $e->getMessage());
+            $cache[$userId] = false; // fail closed
+        }
+    }
+    return $cache[$userId];
+}
+
 // Send the browser to another page on this site and stop.
 function redirect(string $path): void
 {
@@ -105,6 +135,10 @@ $router->get('/manga', fn() => view('manga'));
 $router->get('/manga/{id}', fn(string $id) => view('manga-id', ['id' => $id]));
 
 $router->get('/products', fn() =>view('products'));
+
+// Admin: edit the anime and manga catalogue (logged out -> /login, not admin -> 403).
+// The page only calls the API; api.php checks admin again on every write.
+$router->get('/admin', fn() => view('admin'), [AuthMiddleware::class, AdminMiddleware::class]);
 
 $router->post('/logout',[AuthController::class, 'LogOut']);
 

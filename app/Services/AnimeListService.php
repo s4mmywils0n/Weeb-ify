@@ -8,7 +8,7 @@ use InvalidArgumentException;
 use PDO;
 
 /*
- * The anime list: filters, categories, sorting and CURSOR pagination.
+ * The anime and manga lists: filters, categories, sorting and CURSOR pagination.
  *
  * Why cursors instead of ?page=N:
  *   ?page=40 makes the database read and throw away the first 780 rows every time.
@@ -16,8 +16,9 @@ use PDO;
  *   using the sort value + id of the last row on the current page.
  *
  * Query parameters (all optional):
- *   showtype=TV  agerating=PG  category[]=Action&category[]=Comedy  sort=title_asc
- *   limit=5|10|20            (default 20)
+ *   q=naruto                 title search (case-insensitive, max 100 characters)
+ *   showtype=TV|mangatype=manga  agerating=PG  category[]=Action&category[]=Comedy
+ *   sort=title_asc  limit=<configured value>
  *   after=<cursor>           next page   (cursor from the X-Next-Cursor header)
  *   before=<cursor>          previous page (cursor from the X-Prev-Cursor header)
  *
@@ -26,8 +27,17 @@ use PDO;
  */
 class AnimeListService
 {
-    public function __construct(private PDO $pdo, private array $config)
-    {
+    private string $typeFilter;
+
+    public function __construct(
+        private PDO $pdo,
+        private array $config,
+        private string $table = 'anime'
+    ) {
+        if (!in_array($this->table, ['anime', 'manga'], true)) {
+            throw new InvalidArgumentException('Invalid catalogue table.');
+        }
+        $this->typeFilter = $this->table === 'anime' ? 'showtype' : 'mangatype';
     }
 
     public function list(array $query): array
@@ -69,7 +79,7 @@ class AnimeListService
         // Ask for one extra row: if it comes back, there is another page in that direction.
         $stmt = $this->pdo->prepare(
             "SELECT *, $expr AS cursor_value
-             FROM public.anime
+             FROM public.{$this->table}
              $whereSql
              ORDER BY $expr $orderDir, id $orderDir
              LIMIT :limit"
@@ -110,7 +120,7 @@ class AnimeListService
         return ['records' => $records, 'next' => $next, 'prev' => $prev];
     }
 
-    // ?limit=5|10|20
+    // ?limit=<configured value>
     private function limit(array $query): int
     {
         $raw = $this->string($query, 'limit');
@@ -126,13 +136,24 @@ class AnimeListService
         return $limit;
     }
 
-    // showtype, agerating, category[]  ->  [where clauses, bound values]
+    // q, showtype, agerating, category[]  ->  [where clauses, bound values]
     private function filters(array $query): array
     {
         $where = [];
         $values = [];
 
-        foreach (['showtype', 'agerating'] as $filter) {
+        // ?q=naruto  ->  title contains the text, ignoring case
+        $search = $this->string($query, 'q');
+        if ($search !== '') {
+            if (mb_strlen($search) > 100) {
+                throw new InvalidArgumentException('Search text is too long (max 100 characters).');
+            }
+            // "!" is the escape character, so 50% searches for "50%" and not "50 + anything"
+            $where[] = "title ILIKE :q ESCAPE '!'";
+            $values[':q'] = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search) . '%';
+        }
+
+        foreach ([$this->typeFilter, 'agerating'] as $filter) {
             $value = $this->string($query, $filter);
             if ($value === '') {
                 continue;
@@ -167,7 +188,7 @@ class AnimeListService
             $values[":category$i"] = $category;
         }
         if ($placeholders) {
-            // @> means "contains all of": the anime must have every ticked category
+            // @> means "contains all of": the record must have every ticked category
             $where[] = $this->config['category']['column'] . ' @> ARRAY[' . implode(', ', $placeholders) . ']::text[]';
         }
 

@@ -287,7 +287,7 @@ require __DIR__ . '/partials/header.php';
 
             try {
                 const response = await fetch(
-                    `${API_URL}/favorites?${type}_id=${encodeURIComponent(targetId)}`,
+                    `${API_URL}/favorites?type=${type}&${type}_id=${encodeURIComponent(targetId)}`,
                     {
                         method: 'DELETE',
                         credentials: 'same-origin',

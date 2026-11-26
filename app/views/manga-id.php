@@ -55,8 +55,10 @@ $supabaseKey = (string) ($env['key'] ?? '');
 $favoriteUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
 ?>
 <?php
-$title = 'Manga details — Weebi:fy';
+$title = 'Manga — Weebi:fy';
 $active = 'manga';
+$searchAction = BASE_URL . '/manga';
+$searchPlaceholder = 'Search manga';
 require __DIR__ . '/partials/header.php';
 ?>
 
@@ -70,6 +72,9 @@ require __DIR__ . '/partials/header.php';
                 Add to favorites
             </button>
             <p id="favorite-message" class="favorite-message" role="status" aria-live="polite"></p>
+            <?php if ($recordId !== null && currentUserIsAdmin()): ?>
+            <a class="login-link login-link-secondary" href="<?= BASE_URL ?>/admin?type=manga&amp;edit=<?= (int) $recordId ?>">Edit (admin)</a>
+            <?php endif; ?>
         </div>
 
         <section id="record-content" aria-live="polite">
@@ -104,7 +109,7 @@ require __DIR__ . '/partials/header.php';
 
             try {
                 const res = await fetch(
-                    `${API_URL}/favorites?manga_id=${encodeURIComponent(mangaId)}`,
+                    `${API_URL}/favorites?type=manga&manga_id=${encodeURIComponent(mangaId)}`,
                     { credentials: "same-origin", headers: { "Accept": "application/json" } }
                 );
                 if (!res.ok) throw new Error("Could not check favorites");
@@ -127,14 +132,14 @@ require __DIR__ . '/partials/header.php';
 
             try {
                 const url = isFavorite
-                    ? `${API_URL}/favorites?manga_id=${currentMangaId}`
+                    ? `${API_URL}/favorites?type=manga&manga_id=${encodeURIComponent(currentMangaId)}`
                     : `${API_URL}/favorites`;
                 const options = {
                     method: isFavorite ? "DELETE" : "POST",
                     credentials: "same-origin",
                     headers: { "Accept": "application/json", "Content-Type": "application/json" },
                 };
-                if (!isFavorite) options.body = JSON.stringify({ manga_id: Number(currentMangaId) });
+                if (!isFavorite) options.body = JSON.stringify({ type: "manga", manga_id: currentMangaId });
 
                 const res = await fetch(url, options);
                 const data = await res.json().catch(() => ({}));

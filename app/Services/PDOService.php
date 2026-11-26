@@ -30,6 +30,11 @@ class PDOService
         // app/Services -> project root
         $envPath = dirname(__DIR__, 2) . '/.env';
 
+if (!is_file($envPath)) {
+    throw new RuntimeException(
+        'Expected .env at: ' . $envPath
+    );
+}
         if (!is_file($envPath)) {
             throw new RuntimeException('.env file not found in the project root.');
         }
